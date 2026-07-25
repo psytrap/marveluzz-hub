@@ -77,6 +77,19 @@ marveluzz-hub/
 
 ---
 
+## 🔑 Recommended 4 Supabase Environment Variables
+
+Supabase recommends configuring these 4 environment variables for edge & server deployments:
+
+| Environment Variable | Description | Scope / Usage |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | Base API gateway URL (`https://<project-id>.supabase.co`) | Shared (Edge Server & Browser) |
+| `SUPABASE_ANON_KEY` | Public anonymous API key (enforces Row Level Security) | Public (Client Browser / Realtime) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Admin secret API key (bypasses RLS for ingest RPCs) | Server-Only (Deno Edge Functions) |
+| `SUPABASE_JWT_SECRET` | Secret key for verifying & decoding User JWT auth tokens | Server-Only (Offline Token Verification) |
+
+---
+
 ## 🛠️ Step-by-Step Production Setup Guide (Supabase Cloud + Deno Deploy)
 
 ### Prerequisites
@@ -90,10 +103,11 @@ marveluzz-hub/
 1. Log in to [Supabase Cloud](https://supabase.com) and create a new project to obtain your `<project-id>`.
 2. Open the **SQL Editor** in your Supabase project dashboard.
 3. Copy the entire contents of [`supabase_schema.sql`](./supabase_schema.sql), paste into the SQL Editor, and click **Run**.
-4. Go to **Project Settings -> API** and copy:
-   - **Project URL**: `https://<project-id>.supabase.co`
-   - **anon public key**: `<your-anon-public-key>`
-   - **service_role secret key**: `<your-service-role-secret-key>`
+4. Go to **Project Settings -> API** and copy your 4 environment keys:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `SUPABASE_JWT_SECRET`
 
 ---
 
@@ -101,11 +115,12 @@ marveluzz-hub/
 1. Log in to [Deno Deploy Dashboard](https://dash.deno.com).
 2. Click **New Project** and select your repository.
 3. Set the **Entrypoint** to `src/main.ts`.
-4. Go to **Project Settings -> Environment Variables** and add:
+4. Go to **Project Settings -> Environment Variables** and configure the 4 keys:
    ```env
    SUPABASE_URL=https://<project-id>.supabase.co
    SUPABASE_ANON_KEY=<your-anon-public-key>
    SUPABASE_SERVICE_ROLE_KEY=<your-service-role-secret-key>
+   SUPABASE_JWT_SECRET=<your-jwt-secret-key>
    ```
 5. Click **Deploy**. Your Deno Deploy production dashboard will be live at:
    ```

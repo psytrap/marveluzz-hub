@@ -1,19 +1,24 @@
 // Marveluzz Hub - Stateless Edge Ingest Server (Deno Deploy)
-// Hot-Reload Verified: Watcher active for src/ and public/
+// Official successor to Every-Panel
 
 import { createClient } from "@supabase/supabase-js";
 import { MockSupabaseEngine } from "../tests/supabase_mock.ts";
 
 const PORT = parseInt(Deno.env.get("PORT") || "8000");
 const HOST = "0.0.0.0";
+const START_TIME = Date.now();
 
+// 4 Standard Supabase Environment Variables
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_JWT_SECRET = Deno.env.get("SUPABASE_JWT_SECRET");
 
 // Fallback to local in-memory Mock DB if Supabase credentials are not set
-const mockDb = (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) ? new MockSupabaseEngine() : null;
-const supabase = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+const mockDb = (!SUPABASE_URL || (!SUPABASE_SERVICE_ROLE_KEY && !SUPABASE_ANON_KEY)) ? new MockSupabaseEngine() : null;
+const supabaseKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
+const supabase = (SUPABASE_URL && supabaseKey)
+  ? createClient(SUPABASE_URL, supabaseKey)
   : null;
 
 console.log(`🚀 Marveluzz Hub Starting on http://${HOST}:${PORT}`);
@@ -31,7 +36,7 @@ async function handler(req: Request): Promise<Response> {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Device-Key"
+    "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, Authorization"
   };
 
   if (req.method === "OPTIONS") {
@@ -163,12 +168,97 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 5. Client API: Config / Public Supabase Keys for Frontend
+    // 5. Client API: Device Storage Stats & Metrics
+    // --------------------------------------------------------
+    if (path === "/api/devices/stats" && req.method === "GET") {
+      const deviceId = url.searchParams.get("device_id");
+      if (!deviceId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing device_id" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      let stats = {
+        deviceId,
+        historyCount: 0,
+        historyBytes: 0,
+        historyTtlDays: 7,
+        deviceKey: "••••••••",
+        status: "detached"
+      };
+
+      if (mockDb) {
+        const dev = mockDb.devices.get(deviceId);
+        const history = mockDb.getHistory(deviceId, 1000);
+        if (dev) {
+          stats.deviceKey = dev.device_key;
+          stats.status = dev.status;
+          stats.historyTtlDays = dev.history_ttl_days;
+          stats.historyCount = history.length;
+          stats.historyBytes = JSON.stringify(history).length;
+        }
+      }
+
+      return new Response(JSON.stringify(stats), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 6. Client API: Wipe Device Data
+    // --------------------------------------------------------
+    if (path === "/api/devices/delete" && req.method === "POST") {
+      const body = await req.json();
+      const { deviceId } = body;
+
+      if (!deviceId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing deviceId" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      if (supabase) {
+        const { error } = await supabase.rpc("wipe_device_data", { p_device_id: deviceId });
+        if (error) throw error;
+      } else if (mockDb) {
+        mockDb.wipeDeviceData(deviceId);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 7. Client API: Memory & System Diagnostics
+    // --------------------------------------------------------
+    if (path === "/api/debug/memory" && req.method === "GET") {
+      const mem = Deno.memoryUsage();
+      const uptimeSec = Math.floor((Date.now() - START_TIME) / 1000);
+
+      return new Response(JSON.stringify({
+        memory: {
+          rssMb: (mem.rss / (1024 * 1024)).toFixed(2),
+          heapTotalMb: (mem.heapTotal / (1024 * 1024)).toFixed(2),
+          heapUsedMb: (mem.heapUsed / (1024 * 1024)).toFixed(2),
+          externalMb: (mem.external / (1024 * 1024)).toFixed(2)
+        },
+        uptimeSeconds: uptimeSec,
+        mode: mockDb ? "Standalone Mock Engine" : "Supabase Cloud Production"
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 8. Client API: Config / Public Supabase Keys for Frontend
     // --------------------------------------------------------
     if (path === "/api/config") {
       return new Response(JSON.stringify({
         supabaseUrl: SUPABASE_URL || "",
-        supabaseAnonKey: Deno.env.get("SUPABASE_ANON_KEY") || "",
+        supabaseAnonKey: SUPABASE_ANON_KEY || "",
         isStandaloneMock: !!mockDb
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -176,9 +266,9 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 6. Static File Serving (Frontend Assets)
+    // 9. Static File Serving (Frontend Assets & HTML Views)
     // --------------------------------------------------------
-    if (path === "/" || path === "/devices") {
+    if (path === "/" || path === "/devices" || path === "/devices/stats") {
       const html = await Deno.readTextFile("./public/index.html");
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }

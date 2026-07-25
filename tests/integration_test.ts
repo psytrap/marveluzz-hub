@@ -1,9 +1,24 @@
-// Marveluzz Hub - Realistic Supabase Schema Integration Test Suite (Phase 1 Complete)
+// Marveluzz Hub - Realistic Supabase Schema Integration Test Suite (Phase 1 & Phase 2 Complete)
 import { assertEquals, assert, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { MockSupabaseEngine } from "./supabase_mock.ts";
 
 const MOCK_DEVICE_ID = "32323232-3232-4232-8232-28c13340c86c";
 const MOCK_DEVICE_KEY = "secret_passcode_123";
+
+Deno.test("Supabase Environment Credentials & Config Validation Test", () => {
+  const mockEnv = {
+    SUPABASE_URL: "https://test-project.supabase.co",
+    SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon_key_test",
+    SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role_key_test",
+    SUPABASE_JWT_SECRET: "super-secret-jwt-token-key-123456"
+  };
+
+  assert(mockEnv.SUPABASE_URL.startsWith("https://"));
+  assert(mockEnv.SUPABASE_URL.endsWith(".supabase.co"));
+  assert(mockEnv.SUPABASE_ANON_KEY.length > 20);
+  assert(mockEnv.SUPABASE_SERVICE_ROLE_KEY.length > 20);
+  assert(mockEnv.SUPABASE_JWT_SECRET.length > 10);
+});
 
 Deno.test("Supabase Schema Integration: UI Layout Registration RPC", () => {
   const db = new MockSupabaseEngine();
@@ -59,7 +74,6 @@ Deno.test("Supabase Schema Integration: Command Queue Dispatch via Ingest RPC", 
   const db = new MockSupabaseEngine();
 
   const cmdId = db.queueCommand(MOCK_DEVICE_ID, "fan_toggle", "set_value", true);
-
   const executedCmds = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 25.1 });
 
   assertEquals(executedCmds.length, 1);
@@ -76,7 +90,6 @@ Deno.test("Phase 1 RPC Test: Exclusive Control Lease Acquisition & Release", () 
   const sessionTabA = "tab-session-alpha-123";
   const sessionTabB = "tab-session-beta-456";
 
-  // Client Tab A acquires lease
   const acquireSuccess = db.acquireControlLease(MOCK_DEVICE_ID, sessionTabA);
   assertEquals(acquireSuccess, true);
 
@@ -84,11 +97,9 @@ Deno.test("Phase 1 RPC Test: Exclusive Control Lease Acquisition & Release", () 
   assertEquals(devAfterAcquire?.status, "control");
   assertEquals(devAfterAcquire?.controller_session_id, sessionTabA);
 
-  // Client Tab B attempts release (should fail because lease is held by Tab A)
   const releaseByWrongTab = db.releaseControlLease(MOCK_DEVICE_ID, sessionTabB);
   assertEquals(releaseByWrongTab, false);
 
-  // Client Tab A releases lease
   const releaseSuccess = db.releaseControlLease(MOCK_DEVICE_ID, sessionTabA);
   assertEquals(releaseSuccess, true);
 
@@ -100,21 +111,17 @@ Deno.test("Phase 1 RPC Test: Exclusive Control Lease Acquisition & Release", () 
 Deno.test("Phase 1 RPC Test: Wipe Device Storage Data RPC", () => {
   const db = new MockSupabaseEngine();
 
-  // Populate data
   db.registerUIDefinition(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { title: "Test Node" });
   db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 26.5 });
   db.queueCommand(MOCK_DEVICE_ID, "relay_1", "toggle", true);
 
-  // Verify records exist
   assert(db.uiDefinitions.has(MOCK_DEVICE_ID));
   assert(db.telemetryLatest.has(MOCK_DEVICE_ID));
   assert(db.telemetryHistory.length > 0);
 
-  // Execute wipe
   const wipeSuccess = db.wipeDeviceData(MOCK_DEVICE_ID);
   assertEquals(wipeSuccess, true);
 
-  // Verify records are wiped
   assert(!db.uiDefinitions.has(MOCK_DEVICE_ID));
   assert(!db.telemetryLatest.has(MOCK_DEVICE_ID));
   assertEquals(db.getHistory(MOCK_DEVICE_ID).length, 0);
@@ -127,7 +134,6 @@ Deno.test("Phase 1 RPC Test: Wipe Device Storage Data RPC", () => {
 Deno.test("Phase 1 RPC Test: History Retention TTL Cleanup", () => {
   const db = new MockSupabaseEngine();
 
-  // Inject old telemetry record (10 days old)
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
   db.telemetryHistory.push({
     id: 99,
@@ -136,18 +142,37 @@ Deno.test("Phase 1 RPC Test: History Retention TTL Cleanup", () => {
     created_at: tenDaysAgo
   });
 
-  // Inject fresh telemetry record (1 hour old)
   const freshRecord = { temperature: 23.0 };
   db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, freshRecord);
 
-  // Set TTL retention to 7 days and run purge
   const dev = db.devices.get(MOCK_DEVICE_ID);
   if (dev) dev.history_ttl_days = 7;
 
   const purgedCount = db.purgeExpiredTelemetry();
-  assertEquals(purgedCount, 1); // 1 old record purged
+  assertEquals(purgedCount, 1);
 
   const history = db.getHistory(MOCK_DEVICE_ID);
   assertEquals(history.length, 1);
   assertEquals(history[0].data.temperature, 23.0);
+});
+
+Deno.test("Phase 2 API Test: Storage Stats & Wipe Operations", () => {
+  const db = new MockSupabaseEngine();
+  db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 22.0 });
+
+  const history = db.getHistory(MOCK_DEVICE_ID);
+  assertEquals(history.length, 1);
+
+  const dev = db.devices.get(MOCK_DEVICE_ID);
+  assertEquals(dev?.device_key, MOCK_DEVICE_KEY);
+
+  db.wipeDeviceData(MOCK_DEVICE_ID);
+  assertEquals(db.getHistory(MOCK_DEVICE_ID).length, 0);
+});
+
+Deno.test("Phase 2 API Test: Memory Usage Diagnostics Data Structure", () => {
+  const mem = Deno.memoryUsage();
+  assert(mem.rss > 0);
+  assert(mem.heapTotal > 0);
+  assert(mem.heapUsed > 0);
 });

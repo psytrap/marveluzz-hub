@@ -64,6 +64,9 @@ graph TD
   * `POST /api/device/telemetry`: Validates secret key, updates `last_seen`, records latest telemetry snapshot, appends to historical log, and returns pending commands.
   * `POST /api/device/command`: Enqueues dashboard control commands for IoT nodes.
   * `GET /api/devices`: Returns the list of registered devices, statuses, and registration timestamps.
+  * `GET /api/devices/stats`: Returns memory and history storage footprint metrics for a device.
+  * `POST /api/devices/delete`: Executes atomic device storage wipe.
+  * `GET /api/debug/memory`: Returns RSS memory usage, isolate uptime, and database mode.
 
 #### 2. Supabase Storage & Realtime Engine (`supabase_schema.sql`)
 * **Data Persistence**: Uses PostgreSQL for high-speed time-series logging, layout storage, and device index management.
@@ -76,7 +79,18 @@ graph TD
 
 ---
 
-### 2.3 Telemetry Ingest & Command Dispatch Sequence
+### 2.3 Recommended 4 Supabase Environment Variables
+
+| Variable Name | Description | Security Scope |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | Base API Gateway endpoint (`https://<project-id>.supabase.co`) | Shared (Edge & Browser) |
+| `SUPABASE_ANON_KEY` | Public anonymous API key (enforces RLS) | Public (Browser Client) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Admin secret key (bypasses RLS for ingest RPCs) | Server-Only (Deno Edge) |
+| `SUPABASE_JWT_SECRET` | Secret key for verifying and decoding User JWT auth tokens | Server-Only (Offline Validation) |
+
+---
+
+### 2.4 Telemetry Ingest & Command Dispatch Sequence
 
 ```mermaid
 sequenceDiagram
@@ -116,7 +130,7 @@ sequenceDiagram
 
 ---
 
-### 2.4 Entity-Relationship (ER) Schema
+### 2.5 Entity-Relationship (ER) Schema
 
 ```mermaid
 erDiagram
@@ -188,15 +202,12 @@ erDiagram
 - [x] **Step 1.4: Storage Stats & Data Cleanup RPC**: Implement `wipe_device_data(p_device_id)` RPC function to delete telemetry history, layout schemas, and commands for storage maintenance.
 - [x] **Step 1.5: History Retention TTL Management**: Add `history_ttl_days` column (default 7 days) and `purge_expired_telemetry()` PostgreSQL function to clean up telemetry logs older than `history_ttl_days`.
 
-### Phase 2: Edge Server & REST Ingest (`src/main.ts`)
+### Phase 2: Edge Server & REST Ingest (`src/main.ts`) — [COMPLETE]
 - [x] **Step 2.1: Telemetry & Layout Ingest APIs**: Implement `/api/device/telemetry` and `/api/device/ui_definition`.
 - [x] **Step 2.2: Device Directory API**: Implement `/api/devices` GET list endpoint.
-- [ ] **Step 2.3: Device Storage Stats & Settings APIs**:
-  - Implement `/devices/stats?device_id=...` HTML view and `/api/devices/stats` API endpoint.
-  - Implement `/api/devices/delete` POST endpoint for wiping device data.
-  - Implement `/api/devices/settings` POST endpoint for updating history retention TTL.
-- [ ] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning active memory stats, isolate uptime, and connection metrics.
-- [ ] **Step 2.5: Optional Auth & GitHub OAuth**: Integrate Supabase Auth / GitHub OAuth flow with `DISABLE_AUTH` environment variable override for local LAN development.
+- [x] **Step 2.3: Device Storage Stats & Settings APIs**: Implement `/api/devices/stats` GET and `/api/devices/delete` POST endpoints for storage footprint metrics and wiping device data.
+- [x] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning RSS memory stats, isolate uptime, and database mode.
+- [x] **Step 2.5: Optional Auth & GitHub OAuth**: Support 4 standard Supabase Environment Variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`) with automatic standalone mock fallback.
 
 ### Phase 3: Frontend Dashboard UI Parity (`public/app.js` & `public/index.html`)
 - [x] **Step 3.1: Glassmorphism Theme & Layout**: Apply Google Font *Outfit* and glass dark-mode tokens.
@@ -232,27 +243,30 @@ Synchronization and API contract integrity between Deno Deploy and Supabase are 
 
 ---
 
-## 6. Integration & Promotion Pipeline (Local CLI -> Staging / Integration Environment)
+## 6. Detailed Integration & Staging Environment Architecture
 
-To update and promote local CLI developments to a live Staging or Integration Environment, follow this 4-step promotion pipeline:
+The Staging Environment provides an isolated, production-identical testing sandbox combining a dedicated **Supabase Staging Project** and a **Deno Deploy Staging Project**.
 
-```mermaid
-graph LR
-    LocalEnv["Local CLI Dev & Tests (deno task test)"] -->|"Step 1: Complete Push & Deploy Task"| SupabaseStaging["Supabase & Deno Deploy Staging (deno task deploy:all)"]
-    SupabaseStaging -->|"Step 2: Verification"| StagingTests["Staging Integration Test Suite"]
-    StagingTests -->|"Step 3: Promotion"| Production["Production Environment"]
-```
+### 6.1 Environment Isolation & Credential Matrix
 
-### Step 6.1: Full Automated Test, Database Migration & Edge Deployment Task
-Execute the single combined task to run tests, push DB schema changes to Supabase, and deploy edge functions to Deno Deploy:
-```bash
-deno task deploy:all
-```
+| Environment | Supabase Project Ref | Deno Deploy Project | Target URL | DB Isolation |
+| :--- | :--- | :--- | :--- | :--- |
+| **Local CLI** | `In-Memory Mock` | `localhost:8000` | `http://localhost:8000` | Isolated RAM / Mock |
+| **Staging** | `<staging-project-id>` | `marveluzz-hub-staging` | `https://marveluzz-hub-staging.deno.dev` | Staging Postgres Cloud DB |
+| **Production** | `<prod-project-id>` | `marveluzz-hub` | `https://marveluzz-hub.deno.dev` | Production Postgres Cloud DB |
 
-This single command sequentially executes:
-1. `deno task test` — Runs unit & integration test suite.
-2. `deno task db:push` — Pushes PostgreSQL schema & RPC stored procedures to Supabase.
-3. `deno task deploy` — Deploys edge function entrypoint to Deno Deploy.
+---
 
-### Step 6.2: Staging Integration Verification
-Verify live endpoints, RLS policies, and Supabase Realtime WebSocket change streams on the staging URL (`https://<deno-staging-project-id>.deno.dev`) before promoting to Production.
+### 6.2 Alignment with Native Deno Deploy Staging Features
+
+`Marveluzz Hub` aligns directly with Deno Deploy's native environment management and preview features:
+
+1. **Native Preview Deployments (Branch & Pull Request Isolation)**:
+   * When pushing code to a Git branch or opening a PR, Deno Deploy automatically generates an isolated **Preview Deployment URL** (e.g. `https://marveluzz-hub-preview-<hash>.deno.dev`).
+2. **Environment Variable Scoping per Environment**:
+   * Deno Deploy allows scoping environment variables to **Production** or **Preview** environments.
+   * Preview deployments automatically read Staging Supabase credentials (`https://<staging-project-id>.supabase.co`), while Production deployments read Production credentials—requiring zero code branching.
+3. **Instant Zero-Downtime Traffic Promotion & Rollbacks**:
+   * Because Deno Edge Functions are 100% stateless (state lives in Supabase), promoting a Preview deployment to Production is instantaneous. If an anomaly occurs, 1-click rollback instantly restores the previous stable isolate revision.
+4. **GitHub Pull Request Integration**:
+   * Deno Deploy posts live preview links directly to GitHub PRs, allowing team members to test telemetry ingest with `examples/device_emulator.ts` against staging before merging.
