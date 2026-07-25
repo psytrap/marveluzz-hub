@@ -6,6 +6,7 @@ let currentDeviceId = "32323232-3232-4232-8232-28c13340c86c";
 let telemetryChart = null;
 
 async function initApp() {
+  const isDirectoryPage = window.location.pathname === "/devices";
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get("device_id")) {
     currentDeviceId = urlParams.get("device_id");
@@ -20,12 +21,71 @@ async function initApp() {
       setupRealtimeSubscriptions();
     } else {
       console.log("ℹ️ Running with Standalone Local Ingest Server.");
-      startPollingFallback();
     }
 
-    loadInitialData();
+    if (isDirectoryPage) {
+      loadDeviceDirectory();
+    } else {
+      loadInitialData();
+    }
   } catch (e) {
     console.error("Failed to initialize app:", e);
+  }
+}
+
+async function loadDeviceDirectory() {
+  const container = document.getElementById("layout-root");
+  const titleEl = document.getElementById("dashboard-title");
+  if (titleEl) titleEl.textContent = "Marveluzz Hub - Device Directory";
+
+  if (!container) return;
+
+  container.innerHTML = `<div class="glass empty-state"><p style="color:var(--text-secondary);">Loading registered devices...</p></div>`;
+
+  try {
+    const res = await fetch("/api/devices");
+    const list = await res.json();
+
+    container.innerHTML = "";
+
+    if (!list || list.length === 0) {
+      container.innerHTML = `
+        <div class="glass empty-state">
+          <h3 style="margin-bottom:10px;">No registered devices found</h3>
+          <p style="color:var(--text-secondary); font-size:14px;">Connect an IoT node simulator or device to register it in the index.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const dirContainer = document.createElement("div");
+    dirContainer.className = "directory-container";
+
+    list.forEach(dev => {
+      const row = document.createElement("div");
+      row.className = "glass device-row";
+      row.innerHTML = `
+        <div class="device-info">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div class="status-badge ${dev.state}">
+              <span class="status-dot"></span>
+              <span style="font-size:11px; text-transform:capitalize;">${dev.state}</span>
+            </div>
+            <span class="device-title">${dev.title}</span>
+          </div>
+          <span class="device-uuid">${dev.deviceId}</span>
+        </div>
+
+        <div class="device-actions">
+          <a href="/?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; padding:8px 16px;">Open Panel</a>
+        </div>
+      `;
+      dirContainer.appendChild(row);
+    });
+
+    container.appendChild(dirContainer);
+  } catch (e) {
+    container.innerHTML = `<div class="glass empty-state"><p style="color:var(--danger-color);">Error loading directory list.</p></div>`;
   }
 }
 
@@ -65,14 +125,6 @@ function setupRealtimeSubscriptions() {
     .subscribe();
 
   console.log("⚡ Supabase Realtime Subscribed.");
-}
-
-function startPollingFallback() {
-  setInterval(async () => {
-    try {
-      const res = await fetch(`/api/device/telemetry`);
-    } catch (_) {}
-  }, 5000);
 }
 
 function renderUIDefinition(layoutDef) {

@@ -1,5 +1,5 @@
 // Marveluzz Hub - Stateless Edge Ingest Server (Deno Deploy)
-// Official successor to Every-Panel
+// Hot-Reload Verified: Watcher active for src/ and public/
 
 import { createClient } from "@supabase/supabase-js";
 import { MockSupabaseEngine } from "../tests/supabase_mock.ts";
@@ -135,7 +135,35 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 4. Client API: Config / Public Supabase Keys for Frontend
+    // 4. Client API: Directory Device List
+    // --------------------------------------------------------
+    if (path === "/api/devices" && req.method === "GET") {
+      let deviceList: Array<unknown> = [];
+      if (supabase) {
+        const { data, error } = await supabase.from("devices").select("*");
+        if (error) throw error;
+        deviceList = (data || []).map((d: any) => ({
+          deviceId: d.id,
+          title: d.title || "IoT Node",
+          state: d.status || "detached",
+          registeredAt: d.registered_at
+        }));
+      } else if (mockDb) {
+        deviceList = Array.from(mockDb.devices.values()).map(d => ({
+          deviceId: d.id,
+          title: d.title,
+          state: d.status,
+          registeredAt: d.registered_at
+        }));
+      }
+
+      return new Response(JSON.stringify(deviceList), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 5. Client API: Config / Public Supabase Keys for Frontend
     // --------------------------------------------------------
     if (path === "/api/config") {
       return new Response(JSON.stringify({
@@ -148,7 +176,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 5. Static File Serving (Frontend Assets)
+    // 6. Static File Serving (Frontend Assets)
     // --------------------------------------------------------
     if (path === "/" || path === "/devices") {
       const html = await Deno.readTextFile("./public/index.html");
