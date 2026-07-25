@@ -6,13 +6,16 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Devices Table (Authorization, Status, and Control Leases)
+-- 1. Devices Table (Authorization, Status, Leases, Presence & Settings)
 CREATE TABLE IF NOT EXISTS public.devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     device_key TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT 'IoT Device',
     status TEXT NOT NULL DEFAULT 'detached', -- 'detached', 'live', 'control', 'fault'
     controller_session_id TEXT DEFAULT NULL,
+    viewers_active BOOLEAN NOT NULL DEFAULT false,
+    viewers_last_seen TIMESTAMPTZ DEFAULT NOW(),
+    history_ttl_days INTEGER NOT NULL DEFAULT 7,
     registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen TIMESTAMPTZ DEFAULT NOW()
 );
@@ -63,10 +66,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.telemetry_latest;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.device_commands;
 
 -- ==========================================================
--- Stored Procedures / RPC Functions for IoT Device Ingest
+-- Stored Procedures / RPC Functions for IoT Device Ingest & Leases
 -- ==========================================================
 
--- Ingest Telemetry & Return Pending Commands (Atomically)
+-- Ingest Telemetry & Return Pending Commands + Viewer Presence
 CREATE OR REPLACE FUNCTION public.ingest_telemetry(
     p_device_id UUID,
     p_device_key TEXT,
@@ -76,13 +79,15 @@ RETURNS TABLE (
     command_id UUID,
     target TEXT,
     action TEXT,
-    value JSONB
+    value JSONB,
+    viewers_active BOOLEAN
 ) 
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
     v_valid BOOLEAN;
+    v_viewers_active BOOLEAN;
 BEGIN
     -- 1. Authenticate Device Key
     SELECT EXISTS (
@@ -94,7 +99,10 @@ BEGIN
         RAISE EXCEPTION 'Unauthorized: Invalid Device ID or Device Key.';
     END IF;
 
-    -- 2. Update Device Last Seen & Status
+    -- 2. Fetch viewers_active state & update last_seen
+    SELECT d.viewers_active INTO v_viewers_active
+    FROM public.devices d WHERE d.id = p_device_id;
+
     UPDATE public.devices 
     SET last_seen = NOW(), 
         status = CASE WHEN status = 'detached' THEN 'live' ELSE status END
@@ -122,7 +130,7 @@ BEGIN
     SET status = 'executed'
     FROM pending p
     WHERE dc.id = p.id
-    RETURNING dc.id AS command_id, dc.target, dc.action, dc.value;
+    RETURNING dc.id AS command_id, dc.target, dc.action, dc.value, v_viewers_active;
 END;
 $$;
 
@@ -139,7 +147,6 @@ AS $$
 DECLARE
     v_valid BOOLEAN;
 BEGIN
-    -- Authenticate Device Key
     SELECT EXISTS (
         SELECT 1 FROM public.devices 
         WHERE id = p_device_id AND device_key = p_device_key
@@ -149,13 +156,94 @@ BEGIN
         RAISE EXCEPTION 'Unauthorized: Invalid Device ID or Device Key.';
     END IF;
 
-    -- Upsert UI Definition
     INSERT INTO public.ui_definitions (device_id, layout_def, updated_at)
     VALUES (p_device_id, p_layout_def, NOW())
     ON CONFLICT (device_id) 
     DO UPDATE SET layout_def = EXCLUDED.layout_def, updated_at = EXCLUDED.updated_at;
 
     RETURN TRUE;
+END;
+$$;
+
+-- Acquire Exclusive Control Lease
+CREATE OR REPLACE FUNCTION public.acquire_control_lease(
+    p_device_id UUID,
+    p_session_id TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.devices
+    SET status = 'control',
+        controller_session_id = p_session_id
+    WHERE id = p_device_id;
+
+    RETURN TRUE;
+END;
+$$;
+
+-- Release Exclusive Control Lease
+CREATE OR REPLACE FUNCTION public.release_control_lease(
+    p_device_id UUID,
+    p_session_id TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.devices
+    SET status = 'live',
+        controller_session_id = NULL
+    WHERE id = p_device_id AND controller_session_id = p_session_id;
+
+    RETURN TRUE;
+END;
+$$;
+
+-- Wipe Device Storage Data
+CREATE OR REPLACE FUNCTION public.wipe_device_data(
+    p_device_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    DELETE FROM public.telemetry_history WHERE device_id = p_device_id;
+    DELETE FROM public.telemetry_latest WHERE device_id = p_device_id;
+    DELETE FROM public.ui_definitions WHERE device_id = p_device_id;
+    DELETE FROM public.device_commands WHERE device_id = p_device_id;
+    
+    UPDATE public.devices 
+    SET status = 'detached', controller_session_id = NULL 
+    WHERE id = p_device_id;
+
+    RETURN TRUE;
+END;
+$$;
+
+-- Clean Up Expired Telemetry Logs Based on Retention TTL
+CREATE OR REPLACE FUNCTION public.purge_expired_telemetry()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_deleted_count INTEGER;
+BEGIN
+    WITH deleted AS (
+        DELETE FROM public.telemetry_history th
+        USING public.devices d
+        WHERE th.device_id = d.id 
+          AND th.created_at < NOW() - (d.history_ttl_days || ' days')::INTERVAL
+        RETURNING th.id
+    )
+    SELECT COUNT(*) INTO v_deleted_count FROM deleted;
+
+    RETURN v_deleted_count;
 END;
 $$;
 
@@ -168,7 +256,6 @@ ALTER TABLE public.telemetry_latest ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.telemetry_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.device_commands ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access to dashboards (or restrict to authenticated users)
 CREATE POLICY "Public Read Devices" ON public.devices FOR SELECT USING (true);
 CREATE POLICY "Public Read UI Definitions" ON public.ui_definitions FOR SELECT USING (true);
 CREATE POLICY "Public Read Telemetry Latest" ON public.telemetry_latest FOR SELECT USING (true);

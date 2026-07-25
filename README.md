@@ -59,7 +59,7 @@ graph TD
 ```
 marveluzz-hub/
 ├── README.md             # Project documentation & overview
-├── spec.md               # Detailed architectural specification
+├── spec.md               # Detailed architectural specification & migration guide
 ├── supabase_schema.sql   # Complete Supabase SQL schema, RLS, and RPC functions
 ├── deno.json             # Task runner configuration
 ├── src/
@@ -69,7 +69,7 @@ marveluzz-hub/
 │   ├── style.css         # Glassmorphism design tokens & styles
 │   └── app.js            # Frontend logic & Supabase client integration
 ├── examples/
-│   └── device_emulator.ts # IoT node simulator
+│   └── device_emulator.ts # Interactive IoT node simulator web panel (Port 8001)
 └── tests/
     ├── integration_test.ts # Integration test suite
     └── supabase_mock.ts    # Realistic Supabase mock engine
@@ -77,24 +77,67 @@ marveluzz-hub/
 
 ---
 
-## 🚀 Quick Start & Setup
+## 🛠️ Step-by-Step Production Setup Guide (Supabase Cloud + Deno Deploy)
 
-### 1. Set Up Supabase Database
-1. Create a new project on [Supabase](https://supabase.com).
-2. Go to the **SQL Editor** in your Supabase dashboard.
-3. Paste and run the contents of [`supabase_schema.sql`](./supabase_schema.sql).
+### Prerequisites
+* **Deno 2.x** installed locally (`deno --version`).
+* Free account on **[Supabase Cloud](https://supabase.com)**.
+* Free account on **[Deno Deploy](https://dash.deno.com)**.
 
-### 2. Run the Local Server & Simulator
-1. **Start the local server**:
-   ```bash
-   deno task dev
+---
+
+### Step 1: Set Up Supabase Database (Production Mode)
+1. Log in to [Supabase Cloud](https://supabase.com) and create a new project to obtain your `<project-id>`.
+2. Open the **SQL Editor** in your Supabase project dashboard.
+3. Copy the entire contents of [`supabase_schema.sql`](./supabase_schema.sql), paste into the SQL Editor, and click **Run**.
+4. Go to **Project Settings -> API** and copy:
+   - **Project URL**: `https://<project-id>.supabase.co`
+   - **anon public key**: `<your-anon-public-key>`
+   - **service_role secret key**: `<your-service-role-secret-key>`
+
+---
+
+### Step 2: Deploy Edge Server to Deno Deploy
+1. Log in to [Deno Deploy Dashboard](https://dash.deno.com).
+2. Click **New Project** and select your repository.
+3. Set the **Entrypoint** to `src/main.ts`.
+4. Go to **Project Settings -> Environment Variables** and add:
+   ```env
+   SUPABASE_URL=https://<project-id>.supabase.co
+   SUPABASE_ANON_KEY=<your-anon-public-key>
+   SUPABASE_SERVICE_ROLE_KEY=<your-service-role-secret-key>
    ```
-2. **Run the IoT node simulator in another terminal**:
-   ```bash
-   deno task emulator
+5. Click **Deploy**. Your Deno Deploy production dashboard will be live at:
    ```
-3. **Open the Dashboard in your browser**:
-   Navigate to `http://localhost:8000` to view the live dashboard updating in real-time.
+   https://<deno-project-id>.deno.dev
+   ```
+
+---
+
+### Step 3: Local Development & Standalone Testing Setup
+
+#### Option A: Local Dev Mode (No Supabase Account Required)
+If `SUPABASE_URL` is omitted from environment variables, `src/main.ts` automatically runs in **Standalone Local Mode** using the in-memory Supabase Engine Mock:
+```bash
+# 1. Start local edge server
+deno task dev
+
+# 2. Run IoT Node Simulator in another terminal
+deno task emulator
+
+# 3. Open http://localhost:8000 in your browser
+```
+
+#### Option B: Run Integration Tests
+```bash
+deno task test
+```
+
+---
+
+## 🔄 Deployment Synchronization & Staging CLI Workflows
+
+For complete deployment specifications, CLI promotion pipelines (`supabase db push`, `deployctl`), and staging environment workflows, refer to [`spec.md`](./spec.md).
 
 ---
 

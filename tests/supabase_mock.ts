@@ -1,4 +1,4 @@
-// Marveluzz Hub - Realistic Supabase Mock Engine
+// Marveluzz Hub - Realistic Supabase Mock Engine (Phase 1 Enhanced)
 // Mirrors public.devices, public.ui_definitions, public.telemetry_latest,
 // public.telemetry_history, public.device_commands & SQL RPCs from supabase_schema.sql
 
@@ -8,6 +8,9 @@ export interface DeviceRecord {
   title: string;
   status: string; // 'detached', 'live', 'control', 'fault'
   controller_session_id: string | null;
+  viewers_active: boolean;
+  viewers_last_seen: string;
+  history_ttl_days: number;
   registered_at: string;
   last_seen: string;
 }
@@ -49,7 +52,6 @@ export class MockSupabaseEngine {
   public deviceCommands = new Map<string, DeviceCommandRecord>();
   private historyIdCounter = 1;
 
-  // Pre-seed a registered device for testing
   constructor() {
     this.seedDevice("32323232-3232-4232-8232-28c13340c86c", "secret_passcode_123", "ESP32 Temperature Node");
   }
@@ -61,12 +63,15 @@ export class MockSupabaseEngine {
       title,
       status: "detached",
       controller_session_id: null,
+      viewers_active: false,
+      viewers_last_seen: new Date().toISOString(),
+      history_ttl_days: 7,
       registered_at: new Date().toISOString(),
       last_seen: new Date().toISOString()
     });
   }
 
-  // Mirrors RPC function: register_ui_definition
+  // Mirrors RPC: register_ui_definition
   public registerUIDefinition(deviceId: string, deviceKey: string, layoutDef: Record<string, unknown>): boolean {
     const dev = this.devices.get(deviceId);
     if (!dev || dev.device_key !== deviceKey) {
@@ -81,7 +86,7 @@ export class MockSupabaseEngine {
     return true;
   }
 
-  // Mirrors RPC function: ingest_telemetry
+  // Mirrors RPC: ingest_telemetry
   public ingestTelemetry(deviceId: string, deviceKey: string, telemetryData: Record<string, unknown>) {
     const dev = this.devices.get(deviceId);
     if (!dev || dev.device_key !== deviceKey) {
@@ -90,20 +95,17 @@ export class MockSupabaseEngine {
 
     const now = new Date().toISOString();
 
-    // 1. Update last seen & status
     dev.last_seen = now;
     if (dev.status === "detached") {
       dev.status = "live";
     }
 
-    // 2. Upsert telemetry latest
     this.telemetryLatest.set(deviceId, {
       device_id: deviceId,
       data: telemetryData,
       updated_at: now
     });
 
-    // 3. Append to telemetry history
     this.telemetryHistory.push({
       id: this.historyIdCounter++,
       device_id: deviceId,
@@ -111,8 +113,7 @@ export class MockSupabaseEngine {
       created_at: now
     });
 
-    // 4. Fetch and mark pending commands as executed
-    const executedCommands: Array<{ command_id: string; target: string; action: string; value: unknown }> = [];
+    const executedCommands: Array<{ command_id: string; target: string; action: string; value: unknown; viewers_active: boolean }> = [];
     for (const cmd of this.deviceCommands.values()) {
       if (cmd.device_id === deviceId && cmd.status === "pending") {
         cmd.status = "executed";
@@ -120,7 +121,8 @@ export class MockSupabaseEngine {
           command_id: cmd.id,
           target: cmd.target,
           action: cmd.action,
-          value: cmd.value
+          value: cmd.value,
+          viewers_active: dev.viewers_active
         });
       }
     }
@@ -128,7 +130,69 @@ export class MockSupabaseEngine {
     return executedCommands;
   }
 
-  // Fetch telemetry history with O(1) limit & reverse ordering (matching PostgreSQL id DESC)
+  // Mirrors RPC: acquire_control_lease
+  public acquireControlLease(deviceId: string, sessionId: string): boolean {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return false;
+
+    dev.status = "control";
+    dev.controller_session_id = sessionId;
+    return true;
+  }
+
+  // Mirrors RPC: release_control_lease
+  public releaseControlLease(deviceId: string, sessionId: string): boolean {
+    const dev = this.devices.get(deviceId);
+    if (!dev || dev.controller_session_id !== sessionId) return false;
+
+    dev.status = "live";
+    dev.controller_session_id = null;
+    return true;
+  }
+
+  // Mirrors RPC: wipe_device_data
+  public wipeDeviceData(deviceId: string): boolean {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return false;
+
+    this.telemetryLatest.delete(deviceId);
+    this.uiDefinitions.delete(deviceId);
+
+    this.telemetryHistory = this.telemetryHistory.filter(item => item.device_id !== deviceId);
+
+    for (const [id, cmd] of this.deviceCommands.entries()) {
+      if (cmd.device_id === deviceId) {
+        this.deviceCommands.delete(id);
+      }
+    }
+
+    dev.status = "detached";
+    dev.controller_session_id = null;
+    return true;
+  }
+
+  // Mirrors RPC: purge_expired_telemetry
+  public purgeExpiredTelemetry(): number {
+    let deletedCount = 0;
+    const now = Date.now();
+
+    this.telemetryHistory = this.telemetryHistory.filter(item => {
+      const dev = this.devices.get(item.device_id);
+      if (!dev) return false;
+
+      const ttlMs = dev.history_ttl_days * 24 * 60 * 60 * 1000;
+      const ageMs = now - new Date(item.created_at).getTime();
+
+      if (ageMs > ttlMs) {
+        deletedCount++;
+        return false;
+      }
+      return true;
+    });
+
+    return deletedCount;
+  }
+
   public getHistory(deviceId: string, limit = 50): TelemetryHistoryRecord[] {
     return this.telemetryHistory
       .filter(item => item.device_id === deviceId)
@@ -136,7 +200,6 @@ export class MockSupabaseEngine {
       .slice(0, limit);
   }
 
-  // Queue a command from web client
   public queueCommand(deviceId: string, target: string, action: string, value: unknown = null): string {
     const id = crypto.randomUUID();
     this.deviceCommands.set(id, {
