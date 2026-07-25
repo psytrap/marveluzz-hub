@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marveluzz Hub - IoT Dashboard</title>
+  
+  <!-- Modern Google Font 'Outfit' -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js for Telemetry Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Supabase JS Client for Realtime & DB -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-title">
+      <h1>
+        <svg style="width:24px; height:24px; color:var(--accent-color);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
+        <span id="dashboard-title">Marveluzz Hub</span>
+      </h1>
+    </div>
+
+    <div class="header-controls">
+      <!-- Status Badge Component -->
+      <div id="status-badge" class="status-badge detached">
+        <span class="status-dot"></span>
+        <span id="status-text" style="text-transform: capitalize;">Detached</span>
+      </div>
+
+      <!-- Device Directory Link -->
+      <a href="/devices" class="btn-action" style="text-decoration:none;">Device Directory</a>
+
+      <!-- Lease Control Lock Action Button -->
+      <button id="btn-control" class="btn-action" style="display:none;" onclick="toggleControlLease()">Acquire Control</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Dynamic Device UI Layout Container -->
+    <div id="layout-root" class="layout-row">
+      <div class="glass empty-state">
+        <h3 style="margin-bottom:10px;">Connecting to Supabase...</h3>
+        <p style="color:var(--text-secondary); font-size:14px;">Initializing real-time telemetry stream.</p>
+      </div>
+    </div>
+
+    <!-- Live Telemetry History Chart Card -->
+    <div class="glass chart-container" id="telemetry-chart-card" style="display:none;">
+      <div class="chart-header">Real-Time Telemetry History</div>
+      <div class="chart-wrapper">
+        <canvas id="telemetryChart"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script src="/public/app.js"></script>
+</body>
+</html>
