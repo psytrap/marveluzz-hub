@@ -1,7 +1,7 @@
 {
   "tasks": {
     "dev": "deno run --allow-net --allow-env --allow-read --watch=src/,public/ src/main.ts",
-    "test": "deno test --allow-net --allow-env --allow-read tests/integration_test.ts",
+    "test": "deno test --allow-net --allow-env --allow-read tests/local_test.ts",
     "test:staging": "deno test --allow-net --allow-env --allow-read tests/staging_test.ts",
     "check:parity": "deno test --allow-net --allow-env --allow-read tests/staging_test.ts",
     "emulator": "deno run --allow-net --allow-env --allow-read examples/device_emulator.ts",

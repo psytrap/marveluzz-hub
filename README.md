@@ -79,7 +79,7 @@ marveluzz-hub/
 │   └── esp32_device/     # ESP32 C++ Microcontroller Arduino firmware (5m interval)
 │       └── esp32_device.ino
 └── tests/
-    ├── integration_test.ts # Integration test suite (11/11 passing)
+    ├── local_test.ts       # Local test suite (20 tests, no live services)
     ├── staging_test.ts     # Live staging integration test suite (5/5 passing)
     └── supabase_mock.ts    # Realistic Supabase in-memory mock engine
 ```
@@ -129,7 +129,7 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 ### Step 3: Commands & Test Runner
 
 ```bash
-# 1. Run local integration test suite (11/11 passing)
+# 1. Run local test suite (20/20 passing)
 deno task test
 
 # 2. Run live staging integration test suite (read from staging.env)

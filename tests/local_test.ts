@@ -1,4 +1,4 @@
-// Marveluzz Hub - Realistic Supabase Schema Integration Test Suite (Phase 1 & 2 + SSE Streaming)
+// Marveluzz Hub - Local Test Suite (MockSupabaseEngine, file I/O & unit tests — no live services)
 import { assertEquals, assert, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { MockSupabaseEngine } from "./supabase_mock.ts";
 
