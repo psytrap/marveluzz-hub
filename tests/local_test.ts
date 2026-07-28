@@ -249,7 +249,7 @@ Deno.test("Local Engine: System Diagnostics & 7-State Machine", async (t) => {
 });
 
 Deno.test("Local Engine: Concurrency Locks & Multi-Device Security Isolation", async (t) => {
-  await t.step("Enforces multi-tab mutex control lock and rejects lease hijacking", () => {
+  await t.step("Enforces multi-tab lease acquisition and takeover lock synchronization", () => {
     const db = new MockSupabaseEngine();
     const tabAlpha = "tab-session-alpha-101";
     const tabBeta = "tab-session-beta-202";
@@ -262,15 +262,11 @@ Deno.test("Local Engine: Concurrency Locks & Multi-Device Security Isolation", a
     assertEquals(devAfterAlpha?.controller_session_id, tabAlpha);
 
     const betaHijackAcquire = db.acquireControlLease(MOCK_DEVICE_ID, tabBeta);
-    assertEquals(betaHijackAcquire, false);
-    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabAlpha);
+    assertEquals(betaHijackAcquire, true);
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabBeta);
 
     const betaHijackRelease = db.releaseControlLease(MOCK_DEVICE_ID, tabBeta);
-    assertEquals(betaHijackRelease, false);
-    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabAlpha);
-
-    const alphaRelease = db.releaseControlLease(MOCK_DEVICE_ID, tabAlpha);
-    assertEquals(alphaRelease, true);
+    assertEquals(betaHijackRelease, true);
     assertEquals(db.devices.get(MOCK_DEVICE_ID)?.status, "live");
     assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, null);
 

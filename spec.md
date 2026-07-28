@@ -480,6 +480,7 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
   - **Danger Zone section**: "Wipe Device Storage" `btn-delete` button → `POST /api/devices/delete`, then redirect back to `/devices`
 
 ### Verification & Quality Assurance
+- [ ] **Race Conditions & Concurrency Analysis**: Perform formal race condition analysis on concurrent lease takeover (`acquire_control_lease`), simultaneous telemetry ingestion (`ingest_telemetry`), and out-of-order command processing across multi-tab web sessions and edge replicas.
 - [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
 - [x] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
 - [ ] **Formal Staging Branching Strategy**: Establish a formal Git staging branching strategy (`staging` vs `main` release branches, separate Deno Deploy preview environments, and isolated Supabase staging database instances).
