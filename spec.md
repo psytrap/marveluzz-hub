@@ -307,6 +307,34 @@ Similar to `Every-Panel`, `Marveluzz Hub` relies on device-driven UI definitions
 
 ---
 
+#### 2.6.3 Control Lease Acquisition & Takeover Process
+
+To prevent multi-user command race conditions while ensuring fluid usability across tabs and devices, Marveluzz Hub implements an exclusive single-controller lease lock architecture:
+
+1. **Session Identification & Persistence**:
+   - Each browser tab initializes a unique `currentSessionId` (`session_<random>`), which is persisted in `sessionStorage` (`marveluzz_session_id`).
+   - Refreshing or navigating within the same browser tab retains the same session ID.
+
+2. **Lease Acquisition & Takeover Protocol**:
+   - **Acquiring Lease**: Clicking **Acquire Control** sends `POST /api/device/command` with `{ target: "acquire_lease", action: "acquire", value: currentSessionId }`.
+   - **Database State Update**: The server updates `public.devices` with `status = 'control'` and `controller_session_id = currentSessionId`.
+   - **Real-Time Broadcast**: Supabase Realtime emits a PostgreSQL WAL `UPDATE` event to all open dashboard instances.
+   - **Lease Takeover**: If another tab or user clicks **Take Over Control**, `controller_session_id` is updated to the new session ID. The previous controller automatically loses the lease.
+
+3. **Status Badge & Control Overlay States Table**:
+
+| Controller State | Session Match | Status Badge Label | Action Button Text | Form Inputs State |
+| :--- | :--- | :--- | :--- | :--- |
+| **No Lease Active** | `controller_session_id == null` | **`Live`** | **`Acquire Control`** | Enabled |
+| **Active Controller (You)** | `controller_session_id == currentSessionId` | **`Control (You)`** | **`Release Control`** | Enabled |
+| **Other Session Controlling** | `controller_session_id != currentSessionId` | **`Live (In Use)`** | **`Take Over Control`** | Locked (`disabled` overlay) |
+
+4. **Releasing Lease**:
+   - Clicking **Release Control** sends `POST /api/device/command` with `{ target: "release_lease", action: "release", value: currentSessionId }`.
+   - The server sets `status = 'live'` and `controller_session_id = null`, returning all connected clients to default `Live` state.
+
+---
+
 #### Sequence Diagram 2: Standalone Local & Integration Testing Sequence (Testing Path)
 
 ```mermaid

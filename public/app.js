@@ -3,7 +3,11 @@
 
 let supabaseClient = null;
 let currentDeviceId = "32323232-3232-4232-8232-28c13340c86c";
-let currentSessionId = "session_" + Math.random().toString(36).substring(2, 9);
+let currentSessionId = sessionStorage.getItem("marveluzz_session_id");
+if (!currentSessionId) {
+  currentSessionId = "session_" + Math.random().toString(36).substring(2, 9);
+  sessionStorage.setItem("marveluzz_session_id", currentSessionId);
+}
 let telemetryChart = null;
 let lastSeenTimer = null;
 let lastSeenTimestamp = Date.now();
@@ -191,9 +195,18 @@ function setupRealtimeSubscriptions() {
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
       if (payload.new && payload.new.id === currentDeviceId) {
         lastSeenTimestamp = Date.now();
-        const newStatus = payload.new.status || "live";
-        isControlAcquired = payload.new.controller_session_id === currentSessionId;
-        updateStatusBadge(newStatus);
+        const serverSession = payload.new.controller_session_id;
+        if (serverSession === currentSessionId) {
+          isControlAcquired = true;
+          updateStatusBadge("control");
+        } else if (serverSession !== null && serverSession !== undefined) {
+          isControlAcquired = false;
+          updateStatusBadge("control");
+        } else {
+          isControlAcquired = false;
+          const newStatus = payload.new.status === "control" ? "live" : (payload.new.status || "live");
+          updateStatusBadge(newStatus);
+        }
       }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
