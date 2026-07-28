@@ -217,4 +217,9 @@ export class MockSupabaseEngine {
     });
     return id;
   }
+
+  // Mirrors RPC: schema_version
+  public schemaVersion(): string {
+    return "20260728000000";
+  }
 }

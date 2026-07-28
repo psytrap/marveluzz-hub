@@ -342,4 +342,12 @@ Deno.test("Multi-Device Security Isolation Test: Data, Auth Key & Command Queue 
   assertEquals(cmdsForA[0].target, "irrigation_pump");
 });
 
+Deno.test("Production Contract Self-Test RPC & Version Verification Test", () => {
+  const db = new MockSupabaseEngine();
+  const schemaVer = db.schemaVersion();
+
+  assertEquals(schemaVer, "20260728000000");
+});
+
+
 

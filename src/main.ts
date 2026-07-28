@@ -8,6 +8,10 @@ const PORT = parseInt(Deno.env.get("PORT") || "8000");
 const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
+// Version & Contract Compatibility Constants
+const APP_VERSION = "1.0.0";
+const REQUIRED_SCHEMA_VERSION = "20260728000000";
+
 // 4 Standard Supabase Environment Variables
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
@@ -41,12 +45,62 @@ function broadcastSseEvent(deviceId: string, eventName: string, payload: unknown
   }
 }
 
+// -------------------------------------------------------------
+// Automated Production Self-Test & Version Compatibility Verifier
+// -------------------------------------------------------------
+async function verifyContractCompatibility() {
+  try {
+    let actualSchema = "unknown";
+    if (mockDb) {
+      actualSchema = mockDb.schemaVersion();
+    } else if (supabase) {
+      const { data, error } = await supabase.rpc("schema_version");
+      if (error) {
+        return {
+          compatible: false,
+          appVersion: APP_VERSION,
+          requiredSchemaVersion: REQUIRED_SCHEMA_VERSION,
+          actualSchemaVersion: "rpc_error",
+          error: error.message
+        };
+      }
+      actualSchema = String(data);
+    }
+
+    const isMatch = actualSchema === REQUIRED_SCHEMA_VERSION;
+    return {
+      compatible: isMatch,
+      appVersion: APP_VERSION,
+      requiredSchemaVersion: REQUIRED_SCHEMA_VERSION,
+      actualSchemaVersion: actualSchema,
+      error: isMatch ? undefined : `Version Mismatch: Edge Server requires schema '${REQUIRED_SCHEMA_VERSION}', DB returned '${actualSchema}'`
+    };
+  } catch (e) {
+    return {
+      compatible: false,
+      appVersion: APP_VERSION,
+      requiredSchemaVersion: REQUIRED_SCHEMA_VERSION,
+      actualSchemaVersion: "exception",
+      error: e.message
+    };
+  }
+}
+
 console.log(`🚀 Marveluzz Hub Starting on http://${HOST}:${PORT}`);
 if (mockDb) {
   console.log("ℹ️ Running in Local Standalone Mode (Using in-memory Supabase Mock Engine).");
 } else {
   console.log("⚡ Connected to Supabase Production Backend.");
 }
+
+// Execute Self-Test Verification at Startup
+verifyContractCompatibility().then(res => {
+  if (res.compatible) {
+    console.log(`✅ Production Contract Self-Test PASSED. App v${res.appVersion} <-> DB Schema v${res.actualSchemaVersion}`);
+  } else {
+    console.warn(`⚠️ Production Contract Self-Test FAILED: ${res.error}`);
+  }
+});
 
 async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -99,9 +153,8 @@ async function handler(req: Request): Promise<Response> {
             }
           }, 15000);
         },
-        cancel(controller) {
-          clearInterval(intervalId);
-          sseClients.get(deviceId)?.delete(controller);
+        cancel() {
+          if (intervalId) clearInterval(intervalId);
         }
       });
 
@@ -116,31 +169,65 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 2. IoT Ingest API: UI Layout Registration
+    // 2. Automated Self-Test & Version Compatibility Endpoint
+    // --------------------------------------------------------
+    if (path === "/api/health/self-test" && req.method === "GET") {
+      const selfTest = await verifyContractCompatibility();
+      const statusCode = selfTest.compatible ? 200 : 503;
+
+      return new Response(JSON.stringify({
+        status: selfTest.compatible ? "ok" : "degraded",
+        appVersion: selfTest.appVersion,
+        requiredSchemaVersion: selfTest.requiredSchemaVersion,
+        actualSchemaVersion: selfTest.actualSchemaVersion,
+        contractCompatible: selfTest.compatible,
+        databaseMode: mockDb ? "Standalone Mock Engine" : "Supabase Cloud Production",
+        error: selfTest.error,
+        timestamp: new Date().toISOString()
+      }), {
+        status: statusCode,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 3. IoT Device Ingest API: UI Layout Schema Registration
     // --------------------------------------------------------
     if (path === "/api/device/ui_definition" && req.method === "POST") {
       const body = await req.json();
       const { deviceId, deviceKey, layoutDef } = body;
 
       if (!deviceId || !deviceKey || !layoutDef) {
-        return new Response(JSON.stringify({ success: false, error: "Missing parameters" }), {
+        return new Response(JSON.stringify({ success: false, error: "Missing required parameters" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
       if (supabase) {
-        const { data, error } = await supabase.rpc("register_ui_definition", {
+        const { error } = await supabase.rpc("register_ui_definition", {
           p_device_id: deviceId,
           p_device_key: deviceKey,
           p_layout_def: layoutDef
         });
-        if (error) throw error;
+
+        if (error) {
+          return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
       } else if (mockDb) {
-        mockDb.registerUIDefinition(deviceId, deviceKey, layoutDef);
+        try {
+          mockDb.registerUIDefinition(deviceId, deviceKey, layoutDef);
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
       }
 
-      // Broadcast SSE UI layout update event
       broadcastSseEvent(deviceId, "ui_definition", { deviceId, layoutDef });
 
       return new Response(JSON.stringify({ success: true }), {
@@ -149,70 +236,118 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 3. IoT Ingest API: Telemetry Packet Ingest & Command Retrieval
+    // 4. IoT Device Ingest API: Telemetry Packet Ingest
     // --------------------------------------------------------
     if (path === "/api/device/telemetry" && req.method === "POST") {
       const body = await req.json();
       const { deviceId, deviceKey, data } = body;
 
       if (!deviceId || !deviceKey || !data) {
-        return new Response(JSON.stringify({ success: false, error: "Missing parameters" }), {
+        return new Response(JSON.stringify({ success: false, error: "Missing required parameters" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
-      let pendingCommands: Array<unknown> = [];
+      let executedCommands: unknown[] = [];
 
       if (supabase) {
-        const { data: cmdData, error } = await supabase.rpc("ingest_telemetry", {
+        const { data: rpcData, error } = await supabase.rpc("ingest_telemetry", {
           p_device_id: deviceId,
           p_device_key: deviceKey,
           p_telemetry_data: data
         });
-        if (error) throw error;
-        pendingCommands = cmdData || [];
+
+        if (error) {
+          return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        executedCommands = rpcData || [];
       } else if (mockDb) {
-        pendingCommands = mockDb.ingestTelemetry(deviceId, deviceKey, data);
+        try {
+          executedCommands = mockDb.ingestTelemetry(deviceId, deviceKey, data);
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
       }
 
-      // Broadcast SSE live telemetry event
       broadcastSseEvent(deviceId, "telemetry", { deviceId, data });
 
-      return new Response(JSON.stringify({ success: true, commands: pendingCommands }), {
+      return new Response(JSON.stringify({
+        success: true,
+        commands: executedCommands
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
     // --------------------------------------------------------
-    // 4. Client API: Queue Control Command
+    // 5. Dashboard Action API: Command Queue Dispatch
     // --------------------------------------------------------
     if (path === "/api/device/command" && req.method === "POST") {
       const body = await req.json();
       const { deviceId, target, action, value } = body;
 
       if (!deviceId || !target || !action) {
-        return new Response(JSON.stringify({ success: false, error: "Missing command parameters" }), {
+        return new Response(JSON.stringify({ success: false, error: "Missing required command parameters" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
-      let commandId = "";
+      if (target === "acquire_lease") {
+        if (supabase) {
+          const { data: acquireOk } = await supabase.rpc("acquire_control_lease", { p_device_id: deviceId, p_session_id: String(value) });
+          return new Response(JSON.stringify({ success: !!acquireOk }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else if (mockDb) {
+          const ok = mockDb.acquireControlLease(deviceId, String(value));
+          return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (target === "release_lease") {
+        if (supabase) {
+          const { data: releaseOk } = await supabase.rpc("release_control_lease", { p_device_id: deviceId, p_session_id: String(value) });
+          return new Response(JSON.stringify({ success: !!releaseOk }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else if (mockDb) {
+          const ok = mockDb.releaseControlLease(deviceId, String(value));
+          return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      let commandId = crypto.randomUUID();
+
       if (supabase) {
-        const { data, error } = await supabase
+        const { data: cmdInsert, error } = await supabase
           .from("device_commands")
-          .insert({ device_id: deviceId, target, action, value, status: "pending" })
+          .insert({
+            device_id: deviceId,
+            target,
+            action,
+            value,
+            status: "pending"
+          })
           .select("id")
           .single();
+
         if (error) throw error;
-        commandId = data.id;
+        if (cmdInsert) commandId = cmdInsert.id;
       } else if (mockDb) {
         commandId = mockDb.queueCommand(deviceId, target, action, value);
       }
 
-      // Broadcast SSE command event instantly to connected IoT node!
-      broadcastSseEvent(deviceId, "command", { commandId, deviceId, target, action, value });
+      broadcastSseEvent(deviceId, "command", {
+        commandId,
+        deviceId,
+        target,
+        action,
+        value
+      });
 
       return new Response(JSON.stringify({ success: true, commandId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -220,80 +355,91 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 5. Client API: Directory Device List
+    // 6. Client API: Device Directory Listing
     // --------------------------------------------------------
     if (path === "/api/devices" && req.method === "GET") {
-      let deviceList: Array<unknown> = [];
+      let list: unknown[] = [];
+
       if (supabase) {
-        const { data, error } = await supabase.from("devices").select("*");
+        const { data, error } = await supabase
+          .from("devices")
+          .select("id, title, status, last_seen, registered_at");
+
         if (error) throw error;
-        deviceList = (data || []).map((d: any) => ({
-          deviceId: d.id,
-          title: d.title || "IoT Node",
-          state: d.status || "detached",
-          registeredAt: d.registered_at
-        }));
-      } else if (mockDb) {
-        deviceList = Array.from(mockDb.devices.values()).map(d => ({
+        list = (data || []).map(d => ({
           deviceId: d.id,
           title: d.title,
           state: d.status,
+          lastSeen: d.last_seen,
+          registeredAt: d.registered_at
+        }));
+      } else if (mockDb) {
+        list = Array.from(mockDb.devices.values()).map(d => ({
+          deviceId: d.id,
+          title: d.title,
+          state: d.status,
+          lastSeen: d.last_seen,
           registeredAt: d.registered_at
         }));
       }
 
-      return new Response(JSON.stringify(deviceList), {
+      return new Response(JSON.stringify(list), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
     // --------------------------------------------------------
-    // 6. Client API: Device Storage Stats & Metrics
+    // 7. Client API: Device Storage Stats & Device Data Wipe
     // --------------------------------------------------------
     if (path === "/api/devices/stats" && req.method === "GET") {
       const deviceId = url.searchParams.get("device_id");
       if (!deviceId) {
-        return new Response(JSON.stringify({ success: false, error: "Missing device_id" }), {
+        return new Response(JSON.stringify({ success: false, error: "Missing device_id query param" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
-      let stats = {
-        deviceId,
-        historyCount: 0,
-        historyBytes: 0,
-        historyTtlDays: 7,
-        deviceKey: "••••••••",
-        status: "detached"
-      };
+      let recordCount = 0;
+      let status = "detached";
 
-      if (mockDb) {
+      if (supabase) {
+        const { count } = await supabase
+          .from("telemetry_history")
+          .select("*", { count: "exact", head: true })
+          .eq("device_id", deviceId);
+
+        const { data: dev } = await supabase
+          .from("devices")
+          .select("status")
+          .eq("id", deviceId)
+          .single();
+
+        recordCount = count || 0;
+        status = dev?.status || "detached";
+      } else if (mockDb) {
+        recordCount = mockDb.getHistory(deviceId, 1000).length;
         const dev = mockDb.devices.get(deviceId);
-        const history = mockDb.getHistory(deviceId, 1000);
-        if (dev) {
-          stats.deviceKey = dev.device_key;
-          stats.status = dev.status;
-          stats.historyTtlDays = dev.history_ttl_days;
-          stats.historyCount = history.length;
-          stats.historyBytes = JSON.stringify(history).length;
-        }
+        status = dev?.status || "detached";
       }
 
-      return new Response(JSON.stringify(stats), {
+      return new Response(JSON.stringify({
+        deviceId,
+        status,
+        telemetryHistoryRecords: recordCount,
+        historyTtlDays: 7,
+        estimatedBytes: recordCount * 128
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
-    // --------------------------------------------------------
-    // 7. Client API: Wipe Device Data
-    // --------------------------------------------------------
     if (path === "/api/devices/delete" && req.method === "POST") {
       const body = await req.json();
       const { deviceId } = body;
 
       if (!deviceId) {
-        return new Response(JSON.stringify({ success: false, error: "Missing deviceId" }), {
+        return new Response(JSON.stringify({ success: false, error: "Missing deviceId parameter" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });

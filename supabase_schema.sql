@@ -257,6 +257,15 @@ BEGIN
 END;
 $$;
 
+-- Schema Version & Contract Compatibility Function
+CREATE OR REPLACE FUNCTION public.schema_version()
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT '20260728000000'::text;
+$$;
+
 -- ==========================================================
 -- Row Level Security (RLS) Policies
 -- ==========================================================
