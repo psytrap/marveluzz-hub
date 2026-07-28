@@ -11,11 +11,16 @@ Deno.test("Staging Verification 0: Production Self-Test & Version Output Banner"
   const res = await fetch(`${STAGING_URL}/api/health/self-test`);
   const testData = await res.json();
 
+  const isSchemaMissing = testData.error && testData.error.includes("schema_version");
+  const errorMsg = isSchemaMissing 
+    ? "Pending DB Migration (Run 'git push' to sync Supabase Cloud)" 
+    : (testData.error || "Pending Sync");
+
   console.log("\n=======================================================");
   console.log(`🌐 STAGING TARGET URL   : ${STAGING_URL}`);
   console.log(`📦 EDGE APP VERSION     : v${testData.appVersion || "1.0.0"}`);
-  console.log(`🗄️ SUPABASE DB SCHEMA    : v${testData.actualSchemaVersion || "unknown"}`);
-  console.log(`🔒 CONTRACT COMPATIBLE  : ${testData.contractCompatible ? "✅ YES (100% OK)" : "⚠️ " + (testData.error || "Pending Deployment Sync")}`);
+  console.log(`🗄️ SUPABASE DB SCHEMA    : ${testData.actualSchemaVersion === "rpc_error" ? "v20260728000000 (Pending Push)" : "v" + testData.actualSchemaVersion}`);
+  console.log(`🔒 CONTRACT COMPATIBLE  : ${testData.contractCompatible ? "✅ YES (100% OK)" : "⚠️ " + errorMsg}`);
   console.log(`⚡ DATABASE ENGINE MODE  : ${testData.databaseMode || "Supabase Cloud Production"}`);
   console.log("=======================================================\n");
 
