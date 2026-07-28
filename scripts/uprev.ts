@@ -80,7 +80,7 @@ async function uprevVersion() {
   );
   indexContent = indexContent.replace(
     /<strong id="db-version-badge">v[^<]+<\/strong>/,
-    `<strong id="db-version-badge">v${latestSchemaVersion}</strong>`
+    `<strong id="db-version-badge">v${newVersion}</strong>`
   );
   await Deno.writeTextFile(INDEX_HTML_PATH, indexContent);
 

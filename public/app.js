@@ -56,7 +56,13 @@ async function loadVersionAndSelfTest() {
     const testText = document.getElementById("self-test-text");
 
     if (uiEl && data.appVersion) uiEl.textContent = `v${data.appVersion}`;
-    if (dbEl && data.actualSchemaVersion) dbEl.textContent = `v${data.actualSchemaVersion}`;
+    if (dbEl) {
+      if (data.contractCompatible) {
+        dbEl.textContent = `v${data.appVersion}`;
+      } else {
+        dbEl.textContent = data.actualSchemaVersion ? `v${data.actualSchemaVersion}` : "Mismatch";
+      }
+    }
 
     if (testBadge && testText) {
       if (data.contractCompatible) {
