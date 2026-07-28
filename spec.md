@@ -241,6 +241,72 @@ sequenceDiagram
 
 ---
 
+#### 2.6.1 Command Sequence Strategy & Telemetry Cadence
+
+Marveluzz Hub employs a hybrid dual-channel strategy for low-latency command execution and bandwidth optimization:
+
+1. **Telemetry Transmission Cadence**:
+   - **Default Interval (10s)**: IoT nodes transmit telemetry packets every 10 seconds (`10000ms`) during standard background operation.
+   - **Adaptive Fast Cadence (5s)**: When a web client opens the device dashboard tab, `viewers_active` transitions to `true`, automatically increasing the telemetry transmission rate to 5 seconds (`5000ms`) for real-time responsiveness.
+
+2. **Downlink Command Dispatch Channels**:
+   - **Primary Real-Time Push (<5ms)**: IoT nodes maintain a persistent WebSocket connection to Supabase Realtime (`realtime:public:device_commands`). When a web UI user triggers a control action, the server pushes the command payload over WebSocket with sub-5ms latency.
+   - **Secondary HTTP Piggybacked Polling (Fallback)**: When posting telemetry via `POST /api/device/telemetry` or `/rest/v1/rpc/ingest_telemetry`, the server response includes an array of queued `pending` commands (`status = 'pending'`). This guarantees command delivery even if WebSocket connection drops.
+
+3. **Command Payload Execution & Filtering Rules**:
+   - **Null / Empty Filtering**: When no pending commands are queued, the telemetry ingest response returns an empty array `[]` (or metadata object). Nodes **MUST** filter out null or incomplete command objects (`!cmd || !cmd.target || cmd.target === 'undefined'`) to prevent spurious command execution logs.
+   - **Atomic State Transition**: Pending commands are updated to `status = 'executed'` atomically within the database transaction when fetched.
+
+---
+
+#### 2.6.2 Dynamic UI Layout Schema Format Specification
+
+Similar to `Every-Panel`, `Marveluzz Hub` relies on device-driven UI definitions registered via `POST /api/device/ui_definition` or the `register_ui_definition` RPC. The server persists the layout definition in `public.ui_definitions.layout_def` and streams it in real-time to dashboard clients.
+
+##### Generic Layout Schema Envelope Format
+
+```json
+{
+  "title": "<Device Header Title>",
+  "type": "layout",
+  "properties": {
+    "id": "layout_container",
+    "flow": "row"
+  },
+  "layout": [
+    {
+      "type": "<widget_type>",
+      "properties": {
+        "label": "<Display Label>",
+        "id": "<telemetry_field_id>",
+        "value": "<default_or_initial_value>",
+        "unit": "<optional_unit_symbol>"
+      }
+    }
+  ]
+}
+```
+
+##### Supported Flow Types (`properties.flow`)
+
+- **`row`**: Arranges widget cards in horizontal flex rows with responsive wrapping (default container layout).
+- **`column`**: Stacks widget cards vertically in a single column layout.
+
+##### Available Widget Types & Properties Table
+
+| Widget Type | Description | Supported Properties | Interaction & Event Handling |
+| :--- | :--- | :--- | :--- |
+| `number` | Numeric sensor readout gauge card | `label`, `id`, `value`, `unit` | Read-only (Updates on telemetry stream) |
+| `indicator` | Diagnostic status text readout card | `label`, `id`, `value`, `unit` | Read-only (Updates on telemetry stream) |
+| `range` | Interactive slider control | `label`, `id`, `value`, `min`, `max`, `unit` | Dispatches `POST /api/device/command` (`set_value`) |
+| `button` | Push-button toggle control | `label`, `id`, `value` | Dispatches `POST /api/device/command` (`toggle`) |
+| `text` | Read-only string text field | `label`, `id`, `value` | Read-only (Updates on telemetry stream) |
+| `img` | Live camera image or video stream | `label`, `id`, `url` (or `value`) | Dynamic URL source update |
+| `divider` | Horizontal section separator line | None | Rendered as 1px Glassmorphism border line |
+| `chart` | Time-series telemetry line plot | `label`, `id`, `target_key` | Real-time Chart.js plot stream |
+
+---
+
 #### Sequence Diagram 2: Standalone Local & Integration Testing Sequence (Testing Path)
 
 ```mermaid

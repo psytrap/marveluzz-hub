@@ -364,7 +364,7 @@ async function toggleControlLease() {
   try {
     if (isControlAcquired) {
       // Release Lease
-      const res = await fetch("/api/device/command", {
+      await fetch("/api/device/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -376,10 +376,9 @@ async function toggleControlLease() {
       });
       isControlAcquired = false;
       updateStatusBadge("live", "Live");
-      alert("Control lease released.");
     } else {
       // Acquire Lease
-      const res = await fetch("/api/device/command", {
+      await fetch("/api/device/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -391,10 +390,9 @@ async function toggleControlLease() {
       });
       isControlAcquired = true;
       updateStatusBadge("control", "Exclusive Control");
-      alert("Exclusive control lease acquired!");
     }
   } catch (e) {
-    alert("Failed to toggle control lease.");
+    console.error("Failed to toggle control lease:", e);
   }
 }
 

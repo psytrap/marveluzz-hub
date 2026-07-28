@@ -599,22 +599,25 @@ const HTML_CONTENT = `<!DOCTYPE html>
         });
 
         if (!res.ok) {
-          log(\`❌ Telemetry HTTP Error \${res.status}\`, "Error");
+          log(`❌ Telemetry HTTP Error ${res.status}`, "Error");
           return;
         }
 
         const data = await res.json();
         const isSuccess = isDirect ? Array.isArray(data) : data.success;
-        const commands = isDirect ? data : (data.commands || []);
+        const rawCommands = isDirect ? (Array.isArray(data) ? data : []) : (data.commands || []);
+        const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
 
         if (isSuccess) {
-          log(\`Telemetry Ingest (\${viewersActive ? '5s Fast' : '30s Power-Save'}) -> Temp: \${tempVal.toFixed(1)}°C, Fan: \${fanVal ? 'ON' : 'OFF'}, Fault: \${hasFault ? 'E-04' : 'None'}\`, "Info");
+          log(`Telemetry Ingest (${viewersActive ? '5s Fast' : '10s Default'}) -> Temp: ${tempVal.toFixed(1)}°C, Fan: ${fanVal ? 'ON' : 'OFF'}, Fault: ${hasFault ? 'E-04' : 'None'}`, "Info");
 
-          if (commands && commands.length > 0) {
-            commands.forEach(cmd => {
-              log(\`Incoming Command Executed -> Target: '\${cmd.target}', Action: \${cmd.action}, Value: \${JSON.stringify(cmd.value)}\`, "Command");
+          if (commandList && commandList.length > 0) {
+            commandList.forEach(cmd => {
+              if (!cmd || !cmd.target || cmd.target === "undefined") return;
+              log(`Incoming Command Executed -> Target: '${cmd.target}', Action: ${cmd.action}, Value: ${JSON.stringify(cmd.value)}`, "Command");
+
               if (cmd.target === "fan_toggle") {
-                fanVal = !fanVal;
+                fanVal = (cmd.value !== undefined && cmd.value !== null) ? Boolean(cmd.value) : !fanVal;
                 document.getElementById("knob-fan").checked = fanVal;
               } else if (cmd.target === "viewers_active") {
                 toggleViewersActive(!!cmd.value);
