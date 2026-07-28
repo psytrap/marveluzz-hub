@@ -407,6 +407,9 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 
 ## 7. Future Enhancements & TODO Roadmap
 
+### UI & Design
+- [ ] **Wipe Data Button Styling**: The "Wipe Data" button in the Device Directory should match the visual style of the storage/stats button from `Every-Panel` (same dimensions, color treatment, and hover states for design consistency across projects).
+
 ### Verification & Quality Assurance
 - [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
 - [x] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.

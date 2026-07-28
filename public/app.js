@@ -73,6 +73,15 @@ async function loadVersionAndSelfTest() {
         testText.textContent = "Version Mismatch";
       }
     }
+
+    // Show database engine mode in footer
+    const dbModeBadge = document.getElementById("db-mode-badge");
+    const dbModeText = document.getElementById("db-mode-text");
+    if (dbModeBadge && dbModeText && data.databaseMode) {
+      const isMock = data.databaseMode.toLowerCase().includes("mock");
+      dbModeText.textContent = isMock ? "🧪 Standalone Mock" : "⚡ Supabase Cloud";
+      dbModeBadge.className = isMock ? "db-mode-badge mock" : "db-mode-badge";
+    }
   } catch (e) {
     console.error("Failed to fetch self-test status:", e);
   }

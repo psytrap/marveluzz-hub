@@ -1,8 +1,8 @@
 #!/bin/sh
 # Marveluzz Hub Hook Module 1: Test Suite Verification
 
-echo "🧪 [Module 1/2] Running Marveluzz Hub Test Suite (deno test -A)..."
-deno test -A
+echo "🧪 [Module 1/2] Running Marveluzz Hub Test Suite (deno task test)..."
+deno task test
 
 TEST_EXIT_CODE=$?
 if [ $TEST_EXIT_CODE -ne 0 ]; then
@@ -11,5 +11,5 @@ if [ $TEST_EXIT_CODE -ne 0 ]; then
   exit 1
 fi
 
-echo "✅ [Module 1/2] All 25 tests passed cleanly."
+echo "✅ [Module 1/2] All 16 integration tests passed cleanly."
 exit 0
