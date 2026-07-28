@@ -499,12 +499,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
       };
 
       try {
-        let endpoint = \`\${hubUrl}/api/device/ui_definition\`;
+        let endpoint = hubUrl + "/api/device/ui_definition";
         let headers = { "Content-Type": "application/json" };
         let bodyPayload = { deviceId, deviceKey, layoutDef };
 
         if (isDirect) {
-          endpoint = \`\${hubUrl}/rest/v1/rpc/register_ui_definition\`;
+          endpoint = hubUrl + "/rest/v1/rpc/register_ui_definition";
           headers["apikey"] = anonKey;
           headers["Authorization"] = "Bearer " + anonKey;
           bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_layout_def: layoutDef };
@@ -518,7 +518,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         if (!layoutRes.ok) {
           const errText = await layoutRes.text();
-          log(\`❌ HTTP Error \${layoutRes.status}: \${errText}\`, "Error");
+          log("❌ HTTP Error " + layoutRes.status + ": " + errText, "Error");
           return;
         }
 
@@ -576,7 +576,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       const telemetryData = {
         temperature: Number(tempVal.toFixed(1)),
         fan_toggle: fanVal,
-        uptime: `${uptimeSec}s`,
+        uptime: uptimeSec + "s",
         viewers_active: viewersActive,
         power_save_mode: !viewersActive,
         status_text: hasFault ? "CRITICAL: Fault" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
@@ -584,12 +584,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
       };
 
       try {
-        let endpoint = `${hubUrl}/api/device/telemetry`;
+        let endpoint = hubUrl + "/api/device/telemetry";
         let headers = { "Content-Type": "application/json" };
         let bodyPayload = { deviceId, deviceKey, data: telemetryData };
 
         if (isDirect) {
-          endpoint = `${hubUrl}/rest/v1/rpc/ingest_telemetry`;
+          endpoint = hubUrl + "/rest/v1/rpc/ingest_telemetry";
           headers["apikey"] = anonKey;
           headers["Authorization"] = "Bearer " + anonKey;
           bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_telemetry_data: telemetryData };
@@ -602,7 +602,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         });
 
         if (!res.ok) {
-          log(`❌ Telemetry HTTP Error ${res.status}`, "Error");
+          log("❌ Telemetry HTTP Error " + res.status, "Error");
           return;
         }
 
@@ -612,12 +612,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
         const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
 
         if (isSuccess) {
-          log(`Telemetry Ingest (${viewersActive ? '5s Fast' : '10s Default'}) -> Temp: ${tempVal.toFixed(1)}°C, Fan: ${fanVal ? 'ON' : 'OFF'}, Fault: ${hasFault ? 'Active' : 'None'}`, "Info");
+          log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, Fan: " + (fanVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
 
           if (commandList && commandList.length > 0) {
             commandList.forEach(cmd => {
               if (!cmd || !cmd.target || cmd.target === "undefined") return;
-              log(`Incoming Command Executed -> Target: '${cmd.target}', Action: ${cmd.action}, Value: ${JSON.stringify(cmd.value)}`, "Command");
+              log("Incoming Command Executed -> Target: '" + cmd.target + "', Action: " + cmd.action + ", Value: " + JSON.stringify(cmd.value), "Command");
 
               if (cmd.target === "fan_toggle") {
                 if (cmd.action === "toggle") {
@@ -629,6 +629,11 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 }
                 const knobFan = document.getElementById("knob-fan");
                 if (knobFan) knobFan.checked = fanVal;
+              } else if (cmd.target === "fan_speed") {
+                const speedVal = Number(cmd.value);
+                if (!isNaN(speedVal)) {
+                  log("Fan Speed Target Set -> " + speedVal + "%", "Command");
+                }
               } else if (cmd.target === "viewers_active") {
                 toggleViewersActive(!!cmd.value);
                 const knobViewers = document.getElementById("knob-viewers");
