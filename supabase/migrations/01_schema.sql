@@ -1,4 +1,4 @@
--- Marveluzz Hub - Initial PostgreSQL Schema Migration for Supabase GitHub Integration
+-- Marveluzz Hub - Initial PostgreSQL Database Schema
 
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
