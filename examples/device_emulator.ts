@@ -1,8 +1,11 @@
 // Marveluzz Hub - Interactive IoT Device Emulator Web Panel (Port 8001)
 // Supports both Direct-to-Supabase Cloud Ingest & Edge Gateway Ingest
 
-const PORT = Number(Deno.env.get("PORT")) || 8001;
-const DEFAULT_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+const PORT = Number(Deno.env.get("EMULATOR_PORT") || Deno.env.get("PORT")) || 8001;
+const DEFAULT_HUB_URL = Deno.env.get("EMULATOR_URL") || Deno.env.get("STAGING_URL") || Deno.env.get("HUB_URL") || "http://localhost:8000";
+const DEFAULT_ANON_KEY = Deno.env.get("EMULATOR_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+const DEFAULT_DEVICE_ID = Deno.env.get("EMULATOR_DEVICE_ID") || Deno.env.get("TEST_DEVICE_ID") || "32323232-3232-4232-8232-28c13340c86c";
+const DEFAULT_DEVICE_KEY = Deno.env.get("EMULATOR_DEVICE_KEY") || Deno.env.get("TEST_DEVICE_KEY") || "secret_passcode_123";
 
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="en">
@@ -279,7 +282,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         
         <div class="form-group">
           <label>Ingest Target URL</label>
-          <input type="text" id="hub-url" class="input-field" value="https://qmketwlyeexumcxboagc.supabase.co">
+          <input type="text" id="hub-url" class="input-field" value="${DEFAULT_HUB_URL}">
         </div>
 
         <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
@@ -289,12 +292,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         <div class="form-group">
           <label>Device ID (UUID)</label>
-          <input type="text" id="device-id" class="input-field" value="32323232-3232-4232-8232-28c13340c86c">
+          <input type="text" id="device-id" class="input-field" value="${DEFAULT_DEVICE_ID}">
         </div>
 
         <div class="form-group">
           <label>Device Passcode / Secret Key</label>
-          <input type="password" id="device-key" class="input-field" value="secret_passcode_123">
+          <input type="password" id="device-key" class="input-field" value="${DEFAULT_DEVICE_KEY}">
         </div>
 
         <button id="connect-btn" class="btn" onclick="toggleConnection()">Connect & Stream</button>
