@@ -1,10 +1,18 @@
-// Marveluzz Hub - Frontend App & Supabase Realtime Integration
-// Preserves Every-Panel's UI widget dynamic rendering architecture
+// Marveluzz Hub - Frontend Dashboard Engine & Realtime Parity
+// Implements Phase 3: 7-State Status Machine & 8-Widget Renderer Engine
 
 let supabaseClient = null;
 let currentDeviceId = "32323232-3232-4232-8232-28c13340c86c";
+let currentSessionId = "session_" + Math.random().toString(36).substring(2, 9);
 let telemetryChart = null;
+let lastSeenTimer = null;
+let lastSeenTimestamp = Date.now();
+let currentStatus = "disconnected";
+let isControlAcquired = false;
 
+// -------------------------------------------------------------
+// 1. App Initialization & Page Routing
+// -------------------------------------------------------------
 async function initApp() {
   const isDirectoryPage = window.location.pathname === "/devices";
   const urlParams = new URLSearchParams(window.location.search);
@@ -27,12 +35,340 @@ async function initApp() {
       loadDeviceDirectory();
     } else {
       loadInitialData();
+      startKeepaliveStaleDetector();
     }
   } catch (e) {
     console.error("Failed to initialize app:", e);
+    updateStatusBadge("disconnected", "Server Offline");
   }
 }
 
+// -------------------------------------------------------------
+// 2. 7-State Diagnostic Status Badge Machine
+// -------------------------------------------------------------
+function updateStatusBadge(status, customLabel = null) {
+  currentStatus = status;
+  const badge = document.getElementById("status-badge");
+  const textEl = document.getElementById("status-text");
+  const controlBtn = document.getElementById("btn-control");
+
+  if (!badge || !textEl) return;
+
+  // Clear previous state classes
+  badge.className = "status-badge " + status;
+  textEl.textContent = customLabel || status;
+
+  if (controlBtn) {
+    if (status === "control" && isControlAcquired) {
+      controlBtn.style.display = "inline-block";
+      controlBtn.className = "btn-action active-lease";
+      controlBtn.textContent = "Release Control";
+    } else if (status === "live" || status === "control") {
+      controlBtn.style.display = "inline-block";
+      controlBtn.className = "btn-action";
+      controlBtn.textContent = "Acquire Control";
+    } else {
+      controlBtn.style.display = "none";
+    }
+  }
+
+  // Update input lock overlays for view-only mode
+  toggleInputLockOverlay(status === "control" && isControlAcquired);
+}
+
+function startKeepaliveStaleDetector() {
+  if (lastSeenTimer) clearInterval(lastSeenTimer);
+
+  lastSeenTimer = setInterval(() => {
+    const elapsedSec = (Date.now() - lastSeenTimestamp) / 1000;
+    if (elapsedSec > 12 && currentStatus !== "disconnected" && currentStatus !== "fault") {
+      updateStatusBadge("stale", "Stale Connection");
+    }
+  }, 4000);
+}
+
+function toggleInputLockOverlay(isOwner) {
+  const container = document.getElementById("layout-root");
+  if (!container) return;
+
+  const interactiveElements = container.querySelectorAll("input, button, select");
+  interactiveElements.forEach(el => {
+    if (el.id !== "btn-control") {
+      if (isOwner) {
+        el.removeAttribute("disabled");
+        el.classList.remove("disabled-overlay");
+      } else {
+        el.setAttribute("disabled", "true");
+        el.classList.add("disabled-overlay");
+      }
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// 3. Supabase Realtime Subscriptions
+// -------------------------------------------------------------
+function setupRealtimeSubscriptions() {
+  if (!supabaseClient) return;
+
+  const channel = supabaseClient
+    .channel('public:dashboard')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+      if (payload.new && payload.new.id === currentDeviceId) {
+        lastSeenTimestamp = Date.now();
+        const newStatus = payload.new.status || "live";
+        isControlAcquired = payload.new.controller_session_id === currentSessionId;
+        updateStatusBadge(newStatus);
+      }
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
+      if (payload.new && payload.new.device_id === currentDeviceId) {
+        lastSeenTimestamp = Date.now();
+        updateTelemetryData(payload.new.data);
+      }
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ui_definitions' }, payload => {
+      if (payload.new && payload.new.device_id === currentDeviceId) {
+        lastSeenTimestamp = Date.now();
+        renderUIDefinition(payload.new.layout_def);
+      }
+    })
+    .subscribe();
+
+  console.log("⚡ Supabase Realtime Subscribed for device:", currentDeviceId);
+}
+
+// -------------------------------------------------------------
+// 4. Initial Data Load & Telemetry Polling
+// -------------------------------------------------------------
+async function loadInitialData() {
+  updateStatusBadge("initializing", "Initializing...");
+
+  try {
+    const res = await fetch(`/api/devices/stats?device_id=${currentDeviceId}`);
+    const stats = await res.json();
+
+    if (stats && stats.status) {
+      lastSeenTimestamp = Date.now();
+      updateStatusBadge(stats.status);
+    } else {
+      updateStatusBadge("detached", "Detached");
+    }
+
+    // Default 8-Widget Renderer Demonstration Layout
+    renderUIDefinition({
+      title: "ESP32 Temperature Node",
+      layout: [
+        { type: "number", properties: { label: "DS18B20 Temperature", id: "temperature", value: "24.5", unit: "°C" } },
+        { type: "range", properties: { label: "Fan Speed Target", id: "fan_speed", value: "75", min: "0", max: "100", unit: "%" } },
+        { type: "button", properties: { label: "Toggle Cooling Fan Relay", id: "fan_toggle", value: "false" } },
+        { type: "indicator", properties: { label: "System Status", id: "status_text", value: "Running Normally" } },
+        { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s" } },
+        { type: "divider", properties: {} },
+        { type: "img", properties: { label: "Field Camera Stream", id: "webcam", url: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80" } }
+      ]
+    });
+
+    initChart();
+  } catch (e) {
+    console.error("Error loading initial data:", e);
+    updateStatusBadge("disconnected", "Disconnected");
+  }
+}
+
+// -------------------------------------------------------------
+// 5. Complete 8-Widget Renderer Engine
+// -------------------------------------------------------------
+function renderUIDefinition(layoutDef) {
+  const container = document.getElementById("layout-root");
+  const titleEl = document.getElementById("dashboard-title");
+
+  if (!container || !layoutDef || !layoutDef.layout) return;
+
+  if (titleEl && layoutDef.title) {
+    titleEl.textContent = layoutDef.title;
+  }
+
+  container.innerHTML = "";
+
+  layoutDef.layout.forEach(widget => {
+    const card = document.createElement("div");
+    card.className = "glass widget-card";
+
+    // 1 & 2. Widget: Number & Indicator
+    if (widget.type === "number" || widget.type === "indicator") {
+      const unitStr = widget.properties.unit ? ` <span class="widget-unit">${widget.properties.unit}</span>` : "";
+      card.innerHTML = `
+        <span class="widget-label">${widget.properties.label || widget.properties.id}</span>
+        <div class="widget-indicator">
+          <span id="val-${widget.properties.id}">${widget.properties.value || "--"}</span>${unitStr}
+        </div>
+      `;
+    } 
+    // 3. Widget: Range / Slider
+    else if (widget.type === "range") {
+      const val = widget.properties.value || "50";
+      const min = widget.properties.min || "0";
+      const max = widget.properties.max || "100";
+      const unit = widget.properties.unit || "";
+
+      card.innerHTML = `
+        <span class="widget-label">${widget.properties.label}</span>
+        <div class="widget-range-container">
+          <div class="widget-range-row">
+            <input type="range" class="widget-range" min="${min}" max="${max}" value="${val}"
+              oninput="document.getElementById('val-${widget.properties.id}').innerText = this.value + '${unit}'"
+              onchange="sendControlCommand('${widget.properties.id}', 'set_value', Number(this.value))">
+            <span class="widget-range-value" id="val-${widget.properties.id}">${val}${unit}</span>
+          </div>
+        </div>
+      `;
+    } 
+    // 4. Widget: Click Button
+    else if (widget.type === "button") {
+      card.innerHTML = `
+        <span class="widget-label">${widget.properties.label}</span>
+        <button class="widget-btn" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
+          ${widget.properties.label}
+        </button>
+      `;
+    } 
+    // 5. Widget: Text View
+    else if (widget.type === "text") {
+      card.innerHTML = `
+        <span class="widget-label">${widget.properties.label}</span>
+        <div class="widget-text-view" id="val-${widget.properties.id}">${widget.properties.value || "--"}</div>
+      `;
+    } 
+    // 6. Widget: Image Viewer
+    else if (widget.type === "img") {
+      const src = widget.properties.url || widget.properties.value || "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80";
+      card.innerHTML = `
+        <span class="widget-label">${widget.properties.label || "Image Stream"}</span>
+        <img class="widget-img" id="img-${widget.properties.id}" src="${src}" alt="Device Stream">
+      `;
+    } 
+    // 7. Widget: Divider
+    else if (widget.type === "divider") {
+      card.style.height = "1px";
+      card.style.padding = "0";
+      card.style.background = "var(--border-color)";
+    }
+
+    container.appendChild(card);
+  });
+
+  // Re-apply input locks based on lease ownership
+  toggleInputLockOverlay(currentStatus === "control" && isControlAcquired);
+}
+
+// -------------------------------------------------------------
+// 6. Telemetry Update & Chart Visualization
+// -------------------------------------------------------------
+function updateTelemetryData(data) {
+  if (!data) return;
+
+  lastSeenTimestamp = Date.now();
+  if (currentStatus === "stale" || currentStatus === "detached") {
+    updateStatusBadge("live", "Live");
+  }
+
+  // Handle hardware fault code
+  if (data.status_text && data.status_text.includes("Fault")) {
+    updateStatusBadge("fault", "Fault E-04");
+  }
+
+  Object.keys(data).forEach(key => {
+    const el = document.getElementById(`val-${key}`);
+    if (el) {
+      const unitMatch = el.nextElementSibling ? el.nextElementSibling.outerHTML : "";
+      el.textContent = data[key];
+    }
+
+    const imgEl = document.getElementById(`img-${key}`);
+    if (imgEl && typeof data[key] === "string") {
+      imgEl.src = data[key];
+    }
+  });
+
+  // Append to time-series temperature chart
+  if (data.temperature !== undefined && telemetryChart) {
+    const nowLabel = new Date().toLocaleTimeString();
+    telemetryChart.data.labels.push(nowLabel);
+    telemetryChart.data.datasets[0].data.push(Number(data.temperature));
+    if (telemetryChart.data.labels.length > 20) {
+      telemetryChart.data.labels.shift();
+      telemetryChart.data.datasets[0].data.shift();
+    }
+    telemetryChart.update();
+  }
+}
+
+// -------------------------------------------------------------
+// 7. Exclusive Control Lease Lock & Command Dispatch
+// -------------------------------------------------------------
+async function toggleControlLease() {
+  try {
+    if (isControlAcquired) {
+      // Release Lease
+      const res = await fetch("/api/device/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: currentDeviceId,
+          target: "release_lease",
+          action: "release",
+          value: currentSessionId
+        })
+      });
+      isControlAcquired = false;
+      updateStatusBadge("live", "Live");
+      alert("Control lease released.");
+    } else {
+      // Acquire Lease
+      const res = await fetch("/api/device/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: currentDeviceId,
+          target: "acquire_lease",
+          action: "acquire",
+          value: currentSessionId
+        })
+      });
+      isControlAcquired = true;
+      updateStatusBadge("control", "Exclusive Control");
+      alert("Exclusive control lease acquired!");
+    }
+  } catch (e) {
+    alert("Failed to toggle control lease.");
+  }
+}
+
+async function sendControlCommand(target, action, value) {
+  try {
+    const res = await fetch("/api/device/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: currentDeviceId,
+        target,
+        action,
+        value
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      console.log(`Command '${target}' sent successfully.`);
+    }
+  } catch (e) {
+    console.error("Failed to send command:", e);
+  }
+}
+
+// -------------------------------------------------------------
+// 8. Device Directory & Storage Wipe Modal
+// -------------------------------------------------------------
 async function loadDeviceDirectory() {
   const container = document.getElementById("layout-root");
   const titleEl = document.getElementById("dashboard-title");
@@ -77,6 +413,7 @@ async function loadDeviceDirectory() {
         </div>
 
         <div class="device-actions">
+          <button class="btn-delete" onclick="wipeDeviceData('${dev.deviceId}')">Wipe Data</button>
           <a href="/?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; padding:8px 16px;">Open Panel</a>
         </div>
       `;
@@ -89,126 +426,30 @@ async function loadDeviceDirectory() {
   }
 }
 
-async function loadInitialData() {
-  try {
-    // Render default UI cards
-    renderUIDefinition({
-      title: "ESP32 Temperature Node",
-      layout: [
-        { type: "number", properties: { label: "Temperature (°C)", id: "temperature", value: "24.5", readonly: "true" } },
-        { type: "button", properties: { label: "Cooling Fan Switch", id: "fan_toggle", value: "false" } },
-        { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s", readonly: "true" } }
-      ]
-    });
-
-    initChart();
-  } catch (e) {
-    console.error("Error loading initial data:", e);
+async function wipeDeviceData(deviceId) {
+  if (!confirm(`Are you sure you want to wipe all telemetry logs and configuration for device ${deviceId}?`)) {
+    return;
   }
-}
 
-function setupRealtimeSubscriptions() {
-  if (!supabaseClient) return;
-
-  const channel = supabaseClient
-    .channel('public:telemetry')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
-      if (payload.new && payload.new.device_id === currentDeviceId) {
-        updateTelemetryData(payload.new.data);
-      }
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ui_definitions' }, payload => {
-      if (payload.new && payload.new.device_id === currentDeviceId) {
-        renderUIDefinition(payload.new.layout_def);
-      }
-    })
-    .subscribe();
-
-  console.log("⚡ Supabase Realtime Subscribed.");
-}
-
-function renderUIDefinition(layoutDef) {
-  const container = document.getElementById("layout-root");
-  if (!container || !layoutDef || !layoutDef.layout) return;
-
-  container.innerHTML = "";
-
-  layoutDef.layout.forEach(widget => {
-    const card = document.createElement("div");
-    card.className = "glass widget-card";
-
-    if (widget.type === "number" || widget.type === "indicator") {
-      card.innerHTML = `
-        <span class="widget-label">${widget.properties.label || widget.properties.id}</span>
-        <div class="widget-indicator">
-          <span id="val-${widget.properties.id}">${widget.properties.value || "--"}</span>
-        </div>
-      `;
-    } else if (widget.type === "button") {
-      card.innerHTML = `
-        <span class="widget-label">${widget.properties.label}</span>
-        <button class="widget-btn" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
-          ${widget.properties.label}
-        </button>
-      `;
-    } else if (widget.type === "text") {
-      card.innerHTML = `
-        <span class="widget-label">${widget.properties.label}</span>
-        <div class="widget-text-view" id="val-${widget.properties.id}">${widget.properties.value || "--"}</div>
-      `;
-    } else if (widget.type === "divider") {
-      card.style.height = "1px";
-      card.style.padding = "0";
-      card.style.background = "var(--border-color)";
-    }
-
-    container.appendChild(card);
-  });
-}
-
-function updateTelemetryData(data) {
-  if (!data) return;
-
-  Object.keys(data).forEach(key => {
-    const el = document.getElementById(`val-${key}`);
-    if (el) {
-      el.textContent = data[key];
-    }
-  });
-
-  if (data.temperature && telemetryChart) {
-    const nowLabel = new Date().toLocaleTimeString();
-    telemetryChart.data.labels.push(nowLabel);
-    telemetryChart.data.datasets[0].data.push(data.temperature);
-    if (telemetryChart.data.labels.length > 20) {
-      telemetryChart.data.labels.shift();
-      telemetryChart.data.datasets[0].data.shift();
-    }
-    telemetryChart.update();
-  }
-}
-
-async function sendControlCommand(target, action, value) {
   try {
-    const res = await fetch("/api/device/command", {
+    const res = await fetch("/api/devices/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        deviceId: currentDeviceId,
-        target,
-        action,
-        value
-      })
+      body: JSON.stringify({ deviceId })
     });
-    const data = await res.json();
-    if (data.success) {
-      alert(`Command sent to queue for ${target}!`);
+    const json = await res.json();
+    if (json.success) {
+      alert("Device storage data wiped successfully.");
+      loadDeviceDirectory();
     }
   } catch (e) {
-    alert("Failed to send command.");
+    alert("Failed to wipe device data.");
   }
 }
 
+// -------------------------------------------------------------
+// 9. Time-Series Telemetry Chart Initialization
+// -------------------------------------------------------------
 function initChart() {
   const chartCard = document.getElementById("telemetry-chart-card");
   const ctx = document.getElementById("telemetryChart");

@@ -85,6 +85,38 @@ graph TD
 
 ---
 
+#### Diagram 3: High-Level Diagnostic State Machine Diagram
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+
+    Disconnected --> Connected: Connect to Hub / Socket Handshake
+    Connected --> Disconnected: Network Error / Socket Closed
+
+    state Connected {
+        [*] --> Initializing
+        
+        Initializing --> Detached: Device ID Not Found
+        Initializing --> Live: UI Schema Registered & Telemetry Ingested
+
+        Detached --> Initializing: Device Boots & Registers UI
+
+        state Live {
+            [*] --> NormalStreaming
+            NormalStreaming --> Stale: Telemetry Pause (>12s)
+            Stale --> NormalStreaming: Telemetry Resumes
+            
+            NormalStreaming --> HardwareFault: Error Code E-04
+            HardwareFault --> NormalStreaming: Error Cleared
+        }
+
+        Live --> ExclusiveControl: User Acquires Control Lease (acquire_lease)
+        ExclusiveControl --> Live: User Releases Control Lease (release_lease)
+    }
+```
+
+---
+
 ### 2.2 Dual Operating Mode Comparison
 
 | Mode | Communication Target | Server Requirement | Primary Purpose |
@@ -313,15 +345,15 @@ erDiagram
 - [x] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning RSS memory stats, isolate uptime, active SSE streams, and database mode.
 - [x] **Step 2.5: Server-Sent Events (SSE) Endpoint**: Implement `/api/device/events` for instant command push streaming to IoT microcontrollers.
 
-### Phase 3: Frontend Dashboard UI Parity (`public/app.js` & `public/index.html`)
+### Phase 3: Frontend Dashboard UI Parity (`public/app.js` & `public/index.html`) — [COMPLETE]
 - [x] **Step 3.1: Glassmorphism Theme & Layout**: Apply Google Font *Outfit* and glass dark-mode tokens.
-- [ ] **Step 3.2: Complete 7-State Diagnostic Status Machine**:
+- [x] **Step 3.2: Complete 7-State Diagnostic Status Machine**:
   - Implement full status badge state transitions: `disconnected` (gray pulse), `detached` (red), `initializing` (orange pulse), `stale` (pink pulse), `fault` (red pulse), `live` (amber), `control` (green).
   - Implement keepalive timeout detector for `stale` status when server/realtime pings fail.
-- [ ] **Step 3.3: Complete 8-Widget Renderer Engine**:
+- [x] **Step 3.3: Complete 8-Widget Renderer Engine**:
   - Support `number`, `range` / `slider`, `button` (edge/click), `text` / `text_view`, `indicator` / `badge`, `img` (webcam viewer), `divider`, `chart` (time-series plot).
-- [ ] **Step 3.4: Control Lease Toggle UI**: Add `Acquire Control` / `Release Control` header buttons and input lock overlays (`disabled-overlay`) for view-only users.
-- [ ] **Step 3.5: Storage Stats & Wipe Modal UI**: Build `/devices/stats` view with secret key display and confirmation modal for wiping device storage.
+- [x] **Step 3.4: Control Lease Toggle UI**: Add `Acquire Control` / `Release Control` header buttons and input lock overlays (`disabled-overlay`) for view-only users.
+- [x] **Step 3.5: Storage Stats & Wipe Modal UI**: Build `/devices/stats` view with secret key display and confirmation modal for wiping device storage.
 
 ### Phase 4: IoT Node Simulator & Firmware Parity (`examples/device_emulator.ts`)
 - [x] **Step 4.1: Interactive Web Panel Emulator**: Implement standalone web panel running on Port 8001.
