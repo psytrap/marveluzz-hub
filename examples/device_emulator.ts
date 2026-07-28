@@ -337,7 +337,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         </div>
 
         <div class="form-group" style="margin-top:10px;">
-          <button id="fault-btn" class="btn-fault" onclick="toggleFault()">🚨 Trigger Hardware Fault Code (E-04)</button>
+          <button id="fault-btn" class="btn-fault" onclick="toggleFault()">🚨 Trigger Hardware Fault</button>
         </div>
       </div>
     </div>
@@ -432,12 +432,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
       const btn = document.getElementById("fault-btn");
       if (hasFault) {
         btn.classList.add("active");
-        btn.innerText = "🚨 Clear Hardware Fault Code (E-04)";
-        log("🚨 EMERGENCY HARDWARE FAULT (E-04) TRIGGERED! Flagging critical telemetry payload.", "Error");
+        btn.innerText = "🚨 Clear Hardware Fault";
+        log("🚨 EMERGENCY HARDWARE FAULT TRIGGERED! Flagging critical telemetry payload.", "Error");
       } else {
         btn.classList.remove("active");
-        btn.innerText = "🚨 Trigger Hardware Fault Code (E-04)";
-        log("Hardware Fault Code E-04 cleared. Normal operation restored.", "System");
+        btn.innerText = "🚨 Trigger Hardware Fault";
+        log("Hardware Fault cleared. Normal operation restored.", "System");
       }
       sendTelemetryPacket();
     }
@@ -573,20 +573,20 @@ const HTML_CONTENT = `<!DOCTYPE html>
       const telemetryData = {
         temperature: Number(tempVal.toFixed(1)),
         fan_toggle: fanVal,
-        uptime: \`\${uptimeSec}s\`,
+        uptime: `${uptimeSec}s`,
         viewers_active: viewersActive,
         power_save_mode: !viewersActive,
-        status_text: hasFault ? "CRITICAL: Fault Code E-04" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
-        ...(hasFault ? { fault_code: "E-04", emergency_stop: true } : {})
+        status_text: hasFault ? "CRITICAL: Fault" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
+        ...(hasFault ? { fault: true, emergency_stop: true } : {})
       };
 
       try {
-        let endpoint = \`\${hubUrl}/api/device/telemetry\`;
+        let endpoint = `${hubUrl}/api/device/telemetry`;
         let headers = { "Content-Type": "application/json" };
         let bodyPayload = { deviceId, deviceKey, data: telemetryData };
 
         if (isDirect) {
-          endpoint = \`\${hubUrl}/rest/v1/rpc/ingest_telemetry\`;
+          endpoint = `${hubUrl}/rest/v1/rpc/ingest_telemetry`;
           headers["apikey"] = anonKey;
           headers["Authorization"] = "Bearer " + anonKey;
           bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_telemetry_data: telemetryData };
@@ -609,7 +609,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
 
         if (isSuccess) {
-          log(`Telemetry Ingest (${viewersActive ? '5s Fast' : '10s Default'}) -> Temp: ${tempVal.toFixed(1)}°C, Fan: ${fanVal ? 'ON' : 'OFF'}, Fault: ${hasFault ? 'E-04' : 'None'}`, "Info");
+          log(`Telemetry Ingest (${viewersActive ? '5s Fast' : '10s Default'}) -> Temp: ${tempVal.toFixed(1)}°C, Fan: ${fanVal ? 'ON' : 'OFF'}, Fault: ${hasFault ? 'Active' : 'None'}`, "Info");
 
           if (commandList && commandList.length > 0) {
             commandList.forEach(cmd => {
@@ -617,11 +617,19 @@ const HTML_CONTENT = `<!DOCTYPE html>
               log(`Incoming Command Executed -> Target: '${cmd.target}', Action: ${cmd.action}, Value: ${JSON.stringify(cmd.value)}`, "Command");
 
               if (cmd.target === "fan_toggle") {
-                fanVal = (cmd.value !== undefined && cmd.value !== null) ? Boolean(cmd.value) : !fanVal;
-                document.getElementById("knob-fan").checked = fanVal;
+                if (cmd.action === "toggle") {
+                  fanVal = !fanVal;
+                } else if (cmd.action === "set_value") {
+                  fanVal = Boolean(cmd.value);
+                } else {
+                  fanVal = !fanVal;
+                }
+                const knobFan = document.getElementById("knob-fan");
+                if (knobFan) knobFan.checked = fanVal;
               } else if (cmd.target === "viewers_active") {
                 toggleViewersActive(!!cmd.value);
-                document.getElementById("knob-viewers").checked = viewersActive;
+                const knobViewers = document.getElementById("knob-viewers");
+                if (knobViewers) knobViewers.checked = viewersActive;
               }
             });
           }

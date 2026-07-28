@@ -107,16 +107,38 @@ function updateStatusBadge(status, customLabel = null) {
 
   if (!badge || !textEl) return;
 
+  let labelText = customLabel;
+  if (!labelText) {
+    if (status === "control") {
+      labelText = isControlAcquired ? "Control (You)" : "Live (In Use)";
+    } else {
+      const defaultLabels = {
+        disconnected: "Disconnected",
+        detached: "Detached",
+        initializing: "Initializing...",
+        stale: "Stale Connection",
+        fault: "Fault",
+        live: "Live"
+      };
+      labelText = defaultLabels[status] || status;
+    }
+  }
+
   // Clear previous state classes
   badge.className = "status-badge " + status;
-  textEl.textContent = customLabel || status;
+  textEl.textContent = labelText;
 
   if (controlBtn) {
-    if (status === "control" && isControlAcquired) {
+    if (status === "control") {
       controlBtn.style.display = "inline-block";
-      controlBtn.className = "btn-action active-lease";
-      controlBtn.textContent = "Release Control";
-    } else if (status === "live" || status === "control") {
+      if (isControlAcquired) {
+        controlBtn.className = "btn-action active-lease";
+        controlBtn.textContent = "Release Control";
+      } else {
+        controlBtn.className = "btn-action";
+        controlBtn.textContent = "Take Over Control";
+      }
+    } else if (status === "live") {
       controlBtn.style.display = "inline-block";
       controlBtn.className = "btn-action";
       controlBtn.textContent = "Acquire Control";
@@ -328,7 +350,7 @@ function updateTelemetryData(data) {
 
   // Handle hardware fault code
   if (data.status_text && data.status_text.includes("Fault")) {
-    updateStatusBadge("fault", "Fault E-04");
+    updateStatusBadge("fault", "Fault");
   }
 
   Object.keys(data).forEach(key => {
@@ -389,7 +411,7 @@ async function toggleControlLease() {
         })
       });
       isControlAcquired = true;
-      updateStatusBadge("control", "Exclusive Control");
+      updateStatusBadge("control");
     }
   } catch (e) {
     console.error("Failed to toggle control lease:", e);
