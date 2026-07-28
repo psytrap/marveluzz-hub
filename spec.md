@@ -11,75 +11,155 @@ This project is the official successor to [`every-panel spec.md`](file:///home/m
 ### Motivation & Problem Statement
 In `Every-Panel`, maintaining persistent 24/7 WebSocket connections and Deno KV Watchers on Deno Deploy's free tier kept Deno isolates alive continuously, leading to high **memory time (GB-hours)** usage. 
 
-To overcome this free-tier limitation, `Marveluzz Hub` introduces a **stateless Edge + Supabase hybrid architecture**.
+To overcome this free-tier limitation, `Marveluzz Hub` introduces a **100% Direct-to-Supabase cloud architecture** alongside an offline **Standalone Local Testing Engine**.
 
 ---
 
 ## 2. System Architecture
 
-### 2.1 Multi-Region Cloud & Edge Deployment Architecture
+### 2.1 System Architecture Diagrams
 
+#### Diagram 1: Pure 100% Direct-to-Supabase Cloud Architecture (Production Mode)
 ```mermaid
 graph TD
-    subgraph Physical & Simulated Nodes
-        IoTNode["IoT Node / ESP32 Node"]
-        EmulatorNode["IoT Node Simulator (Port 8001)"]
+    subgraph "Physical IoT Nodes"
+        DeviceDirect["IoT Sensor / Actuator Node (ESP32 / Pi)"]
     end
 
-    subgraph Deno Deploy Edge Layer
-        EdgeIngest["Stateless Edge Ingest API (main.ts)"]
-        LocalMock["Standalone Mock Engine (Fallback)"]
+    subgraph "100% Supabase Cloud Infrastructure"
+        PostgREST["Supabase PostgREST Gateway (/rest/v1/rpc)"]
+        RPCInwall["Atomic SQL RPC: ingest_telemetry()"]
+        DB[("PostgreSQL Database")]
+        RealtimePub["Supabase Realtime Engine (WebSockets)"]
     end
 
-    subgraph Supabase Cloud Database & Realtime
-        SupabaseRPC["Atomic RPC Ingest Engine"]
-        PostgresDB[("PostgreSQL Database")]
-        RealtimeEngine["Supabase Realtime (PubSub)"]
+    subgraph "Web Browsers"
+        WebDashboard["Marveluzz Web Dashboard"]
     end
 
-    subgraph Browser Clients
-        DashboardUI["Dashboard Client (index.html / app.js)"]
-    end
-
-    IoTNode -->|"HTTP POST /api/device/telemetry"| EdgeIngest
-    EmulatorNode -->|"HTTP POST /api/device/ui_definition"| EdgeIngest
+    %% Uplink Path (Telemetry Ingest)
+    DeviceDirect -->|"UPLINK 1: HTTP POST /rpc/ingest_telemetry"| PostgREST
+    PostgREST -->|"UPLINK 2: Execute SQL Stored Proc"| RPCInwall
+    RPCInwall -->|"UPLINK 3: Write Telemetry Data"| DB
     
-    EdgeIngest -->|"RPC ingest_telemetry()"| SupabaseRPC
-    EdgeIngest -.->|"Fallback if no credentials"| LocalMock
+    %% Downlink Path (Instant Command Push)
+    WebDashboard -->|"DOWNLINK 1: Insert Command into device_commands"| PostgREST
+    PostgREST -->|"DOWNLINK 2: Write to device_commands Table"| DB
+    DB -->|"DOWNLINK 3: WAL Change Event Trigger"| RealtimePub
+    RealtimePub -->|"DOWNLINK 4: Direct WebSocket Command Push (<5ms)"| DeviceDirect
     
-    SupabaseRPC -->|"Write Telemetry & Commands"| PostgresDB
-    PostgresDB -->|"WAL Change Broadcast"| RealtimeEngine
-    RealtimeEngine -->|"Direct WebSocket Stream"| DashboardUI
-    DashboardUI -->|"HTTP POST /api/device/command"| EdgeIngest
+    %% Dashboard Live View Stream
+    RealtimePub -->|"STREAM: Live Telemetry Broadcast"| WebDashboard
 ```
 
 ---
 
-### 2.2 Component Specifications
+#### Diagram 2: Standalone Local & Integration Testing Architecture (Testing & Dev Mode)
+```mermaid
+graph TD
+    subgraph "Testing & Simulation Suite"
+        IntegrationTest["Deno Integration Test Suite (deno task test)"]
+        DeviceEmulator["IoT Node Simulator Web Panel (Port 8001)"]
+        TestNode["Local Test IoT Node"]
+    end
 
-#### 1. Stateless Edge Ingest Server (`src/main.ts`)
-* **Execution Lifetime**: Stateless execution mode. Isolate instances boot in <10ms, process incoming HTTP REST payloads, and immediately spin down to 0 MB memory.
+    subgraph "Deno Standalone Local Server (main.ts)"
+        IngestRouter["Local HTTP Ingest API (localhost:8000)"]
+        SSERegistry["Server-Sent Events Broadcaster (/api/device/events)"]
+        MockEngine["In-Memory Supabase Engine Mock"]
+    end
+
+    subgraph "Local Developer Browser"
+        LocalDashboard["Local Dashboard Client (http://localhost:8000)"]
+    end
+
+    IntegrationTest -->|"1. Run RPC & Auth Assertions"| MockEngine
+    DeviceEmulator -->|"2. HTTP POST Telemetry & Layout"| IngestRouter
+    TestNode -->|"2. HTTP POST Telemetry"| IngestRouter
+
+    IngestRouter --> MockEngine
+    IngestRouter -->|"3. Stream SSE Events"| SSERegistry
+    SSERegistry -->|"4. Push Event: command / telemetry"| DeviceEmulator
+    LocalDashboard -->|"5. POST /api/device/command"| IngestRouter
+```
+
+---
+
+### 2.2 Dual Operating Mode Comparison
+
+| Mode | Communication Target | Server Requirement | Primary Purpose |
+| :--- | :--- | :--- | :--- |
+| **Pure Supabase Mode (Production)** | `https://<project-id>.supabase.co` | **0 Intermediate Servers** | Zero-cost production cloud operations, <5ms command push. |
+| **Standalone Local Mode (Testing)** | `http://localhost:8000` | Local Deno Process (`deno task dev`) | Offline development, integration testing, SSE streaming sandbox. |
+
+---
+
+### 2.3 Component Specifications
+
+#### 1. Direct Supabase Ingest Engine (`supabase_schema.sql` / PostgREST)
+* **Ingest Protocol**: IoT nodes send HTTP POST payloads directly to `https://<project-id>.supabase.co/rest/v1/rpc/ingest_telemetry`.
+* **Zero Intermediate Server Overhead**: Completely bypasses external server infrastructure.
+* **Per-Device Key Authentication**: Verified natively in PostgreSQL SQL functions.
+
+#### 2. Deno Standalone Server & Local Engine (`src/main.ts`)
+* **Execution Lifetime**: Stateless execution mode. Processes incoming HTTP REST & SSE payloads, falling back to an in-memory mock DB when local/standalone mode is enabled.
 * **API Endpoints**:
+  * `GET /api/device/events?deviceId=...`: Server-Sent Events (SSE) stream returning instant `connected`, `command`, `telemetry`, and `ui_definition` push events.
   * `POST /api/device/ui_definition`: Validates secret key and registers/updates dynamic UI layout schemas.
   * `POST /api/device/telemetry`: Validates secret key, updates `last_seen`, records latest telemetry snapshot, appends to historical log, and returns pending commands.
-  * `POST /api/device/command`: Enqueues dashboard control commands for IoT nodes.
+  * `POST /api/device/command`: Enqueues dashboard control commands for IoT nodes and broadcasts instant SSE `command` event.
   * `GET /api/devices`: Returns the list of registered devices, statuses, and registration timestamps.
   * `GET /api/devices/stats`: Returns memory and history storage footprint metrics for a device.
   * `POST /api/devices/delete`: Executes atomic device storage wipe.
-  * `GET /api/debug/memory`: Returns RSS memory usage, isolate uptime, and database mode.
+  * `GET /api/debug/memory`: Returns RSS memory usage, isolate uptime, active SSE connections, and database mode.
 
-#### 2. Supabase Storage & Realtime Engine (`supabase_schema.sql`)
+#### 3. Supabase Storage & Realtime Engine
 * **Data Persistence**: Uses PostgreSQL for high-speed time-series logging, layout storage, and device index management.
 * **Realtime Layer**: Native Supabase Realtime (`supabase_realtime` publication) streams database updates (`UPDATE` / `INSERT`) directly to connected dashboard clients over WebSockets.
 * **Row Level Security (RLS)**: Enforces access control rules for authenticated dashboard users and public anonymous keys.
 
-#### 3. Frontend Dashboard Application (`public/index.html` & `public/app.js`)
+#### 4. Frontend Dashboard Application (`public/index.html` & `public/app.js`)
 * **Dynamic Widget Rendering**: Reads UI JSON schemas uploaded by IoT nodes and dynamically constructs visual cards (`number`, `range`, `button`, `indicator`, `text`, `divider`).
 * **Direct Realtime Subscription**: Connects directly to Supabase Realtime WebSockets to display live telemetry changes without polling Deno Deploy.
 
 ---
 
-### 2.3 Recommended 4 Supabase Environment Variables
+### 2.4 Per-Device Secret Provisioning & Key Ownership Patterns
+
+Marveluzz Hub supports strict **per-device secret key isolation**. Device A's secret key (`device_key`) cannot read or write data for Device B.
+
+```mermaid
+graph TD
+    subgraph "Provisioning Patterns"
+        PatternA["Pattern A: Plug & Play Self-Registration (Device Generates Secret)"]
+        PatternB["Pattern B: Admin Pre-Shared Keys (Admin Flashes Secret to NVS)"]
+        PatternC["Pattern C: Dynamic Key Rotation (Admin Regenerates Secret)"]
+    end
+
+    subgraph "Security Enforcement"
+        PostgresRPC["PostgreSQL RPC (ingest_telemetry / register_ui_definition)"]
+        DBTable[("devices Table (id, device_key)")]
+    end
+
+    PatternA -->|"Uploads deviceId & device_key"| PostgresRPC
+    PatternB -->|"Sends flashed device_key"| PostgresRPC
+    PatternC -->|"Updates device_key"| DBTable
+
+    PostgresRPC -->|"Verify WHERE id=p_device_id AND device_key=p_device_key"| DBTable
+```
+
+#### Provisioning Patterns:
+1. **Pattern A: Self-Configuring Device Self-Registration**:
+   * On initial boot, an IoT node generates its own `deviceId` (UUID) and secure random `deviceKey`.
+   * It registers its layout via `POST /api/device/ui_definition`. Supabase creates the device record and locks in that `device_key`.
+2. **Pattern B: Admin Pre-Shared Key (PSK) Provisioning**:
+   * An administrator creates the device in the dashboard and flashes the provisioned `deviceId` and `deviceKey` directly into the microcontroller's non-volatile NVS / EEPROM flash memory.
+3. **Pattern C: Dynamic Secret Key Rotation**:
+   * Admins can regenerate a device's secret key at any time in `/devices/stats`, instantly invalidating compromised keys.
+
+---
+
+### 2.5 Recommended 4 Supabase Environment Variables
 
 | Variable Name | Description | Security Scope |
 | :--- | :--- | :--- |
@@ -90,47 +170,71 @@ graph TD
 
 ---
 
-### 2.4 Telemetry Ingest & Command Dispatch Sequence
+### 2.6 Telemetry Ingest & Command Dispatch Sequence
+
+#### Sequence Diagram 1: 100% Direct-to-Supabase Communication Sequence (Production Mode)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Node as "IoT Node / Simulator"
-    participant Edge as "Deno Edge Ingest"
-    participant DB as "Supabase PostgreSQL"
-    participant Realtime as "Supabase Realtime"
-    participant UI as "Dashboard Browser"
+    participant Node as "IoT Node / ESP32"
+    participant PostgREST as "Supabase PostgREST Gateway"
+    participant DB as "Supabase PostgreSQL DB"
+    participant Realtime as "Supabase Realtime Engine"
+    participant Dashboard as "Marveluzz Web Dashboard"
 
-    Note over UI: User clicks "Toggle Cooling Fan"
-    UI->>Edge: POST /api/device/command (target: fan_toggle, value: true)
-    Edge->>DB: INSERT INTO device_commands (status: 'pending')
-    DB-->>Edge: Returns command_id
+    Note over Node: Node connects WebSocket directly to Supabase Realtime
+    Node->>Realtime: Connect wss://<project-id>.supabase.co/realtime/v1/websocket
+    Realtime-->>Node: WebSocket Connected (Subscribed to device_commands)
 
-    Note over Node: Node sends periodic telemetry (e.g. every 3s)
-    Node->>Edge: POST /api/device/telemetry (deviceId, deviceKey, data)
-    Edge->>DB: SELECT rpc('ingest_telemetry', deviceId, deviceKey, data)
+    Note over Node: UPLINK: IoT Node posts telemetry directly to Supabase
+    Node->>PostgREST: POST /rest/v1/rpc/ingest_telemetry (deviceId, deviceKey, data)
+    PostgREST->>DB: Execute ingest_telemetry() SQL Procedure
+    DB-->>Node: HTTP 200 OK { success: true }
+    DB->>Realtime: WAL Change Broadcast (telemetry_latest UPDATE)
+    Realtime-->>Dashboard: Stream live telemetry update over WebSocket
+
+    Note over Dashboard: DOWNLINK: User clicks button on Web Dashboard
+    Dashboard->>PostgREST: POST /rest/v1/device_commands (status: 'pending')
+    PostgREST->>DB: INSERT INTO device_commands (target: fan_toggle, value: true)
     
     rect rgb(30, 40, 60)
-        Note over DB: Atomic DB Transaction:
-        DB->>DB: 1. Verify device_key match
-        DB->>DB: 2. Update last_seen & status = 'live'
-        DB->>DB: 3. Upsert telemetry_latest
-        DB->>DB: 4. Append to telemetry_history
-        DB->>DB: 5. Fetch & mark pending commands as 'executed'
+        Note over Realtime: INSTANT COMMAND PUSH DOWN:
+        DB->>Realtime: Write-Ahead Log (WAL) Change Event (INSERT device_commands)
+        Realtime-->>Node: Direct WebSocket PUSH DOWN (<5ms): {"target":"fan_toggle","value":true}
     end
 
-    DB-->>Edge: Returns executed commands array
-    Edge-->>Node: HTTP 200 OK { success: true, commands: [fan_toggle] }
-    
-    DB->>Realtime: Trigger WAL Change Event (telemetry_latest UPDATE)
-    Realtime->>UI: Broadcast updated telemetry JSON
-    
-    Note over Node: Node receives command and flips relay
+    Note over Node: IoT Node receives push DOWN instantly & flips hardware relay!
 ```
 
 ---
 
-### 2.5 Entity-Relationship (ER) Schema
+#### Sequence Diagram 2: Standalone Local & Integration Testing Sequence (Testing Path)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Emulator as "IoT Node Simulator (Port 8001)"
+    participant TestRunner as "Integration Test Suite"
+    participant Server as "Deno Local Server (main.ts)"
+    participant MockDB as "In-Memory Supabase Engine Mock"
+
+    Note over TestRunner: Integration test executes assertions
+    TestRunner->>MockDB: Test registerUIDefinition(), ingestTelemetry(), lease RPCs
+    MockDB-->>TestRunner: Assert success = true
+
+    Note over Emulator: Emulator launches web panel on Port 8001
+    Emulator->>Server: POST /api/device/ui_definition
+    Server->>MockDB: Register layout schema
+    
+    Emulator->>Server: POST /api/device/telemetry (temp: 24.5C)
+    Server->>MockDB: Update mock telemetry_latest & history
+    Server-->>Emulator: Returns pending commands
+```
+
+---
+
+### 2.7 Entity-Relationship (ER) Schema
 
 ```mermaid
 erDiagram
@@ -187,7 +291,7 @@ erDiagram
 ## 3. Data & Communication Flow
 
 ### Advantages of the Hybrid Approach:
-* **Near-Zero Deno Deploy Costs**: Memory time on Deno Deploy drops to `< 1 GB-hour/month` because isolates only execute during active request handling.
+* **Near-Zero Server Costs**: Direct Supabase PostgREST ingest requires 0 Deno Deploy memory time.
 * **Scalable Data History**: Supabase PostgreSQL handles large historical time-series telemetry querying seamlessly (`idx_telemetry_history_device_created` index).
 * **Decoupled Realtime Layer**: Web clients receive real-time UI updates directly from Supabase Realtime.
 
@@ -202,12 +306,12 @@ erDiagram
 - [x] **Step 1.4: Storage Stats & Data Cleanup RPC**: Implement `wipe_device_data(p_device_id)` RPC function to delete telemetry history, layout schemas, and commands for storage maintenance.
 - [x] **Step 1.5: History Retention TTL Management**: Add `history_ttl_days` column (default 7 days) and `purge_expired_telemetry()` PostgreSQL function to clean up telemetry logs older than `history_ttl_days`.
 
-### Phase 2: Edge Server & REST Ingest (`src/main.ts`) — [COMPLETE]
+### Phase 2: Edge Server & REST / SSE Ingest (`src/main.ts`) — [COMPLETE]
 - [x] **Step 2.1: Telemetry & Layout Ingest APIs**: Implement `/api/device/telemetry` and `/api/device/ui_definition`.
 - [x] **Step 2.2: Device Directory API**: Implement `/api/devices` GET list endpoint.
 - [x] **Step 2.3: Device Storage Stats & Settings APIs**: Implement `/api/devices/stats` GET and `/api/devices/delete` POST endpoints for storage footprint metrics and wiping device data.
-- [x] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning RSS memory stats, isolate uptime, and database mode.
-- [x] **Step 2.5: Optional Auth & GitHub OAuth**: Support 4 standard Supabase Environment Variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`) with automatic standalone mock fallback.
+- [x] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning RSS memory stats, isolate uptime, active SSE streams, and database mode.
+- [x] **Step 2.5: Server-Sent Events (SSE) Endpoint**: Implement `/api/device/events` for instant command push streaming to IoT microcontrollers.
 
 ### Phase 3: Frontend Dashboard UI Parity (`public/app.js` & `public/index.html`)
 - [x] **Step 3.1: Glassmorphism Theme & Layout**: Apply Google Font *Outfit* and glass dark-mode tokens.
@@ -270,3 +374,37 @@ The Staging Environment provides an isolated, production-identical testing sandb
    * Because Deno Edge Functions are 100% stateless (state lives in Supabase), promoting a Preview deployment to Production is instantaneous. If an anomaly occurs, 1-click rollback instantly restores the previous stable isolate revision.
 4. **GitHub Pull Request Integration**:
    * Deno Deploy posts live preview links directly to GitHub PRs, allowing team members to test telemetry ingest with `examples/device_emulator.ts` against staging before merging.
+
+---
+
+## 7. Direct IoT-to-Supabase Connectivity Solutions (Bypassing Edge Servers)
+
+IoT devices can connect **directly to Supabase** using both stateless or permanent connection protocols:
+
+### Solution A: Direct PostgREST RPC Ingest (Stateless HTTP/HTTPS)
+IoT microcontrollers (ESP32, ESP8266, Raspberry Pi) send standard HTTP POST requests directly to Supabase's built-in PostgREST API endpoint:
+
+```
+POST https://<project-id>.supabase.co/rest/v1/rpc/ingest_telemetry
+Headers:
+  apikey: <SUPABASE_ANON_KEY>
+  Content-Type: application/json
+Body:
+  {
+    "p_device_id": "32323232-3232-4232-8232-28c13340c86c",
+    "p_device_key": "secret_passcode_123",
+    "p_telemetry_data": { "temperature": 24.5, "uptime": "120s" }
+  }
+```
+
+### Solution B: Permanent WebSocket Connection (Supabase Realtime)
+IoT devices maintain a persistent WebSocket connection directly to Supabase Realtime for sub-millisecond bidirectional streaming:
+
+```
+wss://<project-id>.supabase.co/realtime/v1/websocket?apikey=<SUPABASE_ANON_KEY>&vsn=1.0.0
+```
+* **Channel Subscription**: Devices subscribe to topic `realtime:public:device_commands:device_id=eq.<device_id>` to receive instant command pushes from dashboard users.
+* **Presence & Telemetry**: Devices broadcast telemetry data directly over the WebSocket channel.
+
+### Solution C: Server-Sent Events (SSE Stream Endpoint `/api/device/events`)
+IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to listen for real-time command events, while sending telemetry updates via standard HTTP POST calls.

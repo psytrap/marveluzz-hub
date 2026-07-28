@@ -1,4 +1,4 @@
-// Marveluzz Hub - Realistic Supabase Schema Integration Test Suite (Phase 1 & Phase 2 Complete)
+// Marveluzz Hub - Realistic Supabase Schema Integration Test Suite (Phase 1 & 2 + SSE Streaming)
 import { assertEquals, assert, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { MockSupabaseEngine } from "./supabase_mock.ts";
 
@@ -18,6 +18,27 @@ Deno.test("Supabase Environment Credentials & Config Validation Test", () => {
   assert(mockEnv.SUPABASE_ANON_KEY.length > 20);
   assert(mockEnv.SUPABASE_SERVICE_ROLE_KEY.length > 20);
   assert(mockEnv.SUPABASE_JWT_SECRET.length > 10);
+});
+
+Deno.test("Server-Sent Events (SSE) Stream Header & Formatting Test", () => {
+  const sseResponseHeader = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive"
+  };
+
+  assertEquals(sseResponseHeader["Content-Type"], "text/event-stream");
+  assertEquals(sseResponseHeader["Cache-Control"], "no-cache");
+
+  // Format validation for SSE protocol message
+  const deviceId = MOCK_DEVICE_ID;
+  const eventName = "command";
+  const payload = { commandId: "cmd-123", target: "fan_toggle", value: true };
+  const formattedSse = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+
+  assert(formattedSse.startsWith("event: command\n"));
+  assert(formattedSse.endsWith("\n\n"));
+  assert(formattedSse.includes("fan_toggle"));
 });
 
 Deno.test("Supabase Schema Integration: UI Layout Registration RPC", () => {

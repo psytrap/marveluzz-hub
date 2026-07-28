@@ -21,6 +21,26 @@ const supabase = (SUPABASE_URL && supabaseKey)
   ? createClient(SUPABASE_URL, supabaseKey)
   : null;
 
+// SSE Client Registry (deviceId -> Set of SSE controllers)
+const sseClients = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>();
+
+function broadcastSseEvent(deviceId: string, eventName: string, payload: unknown) {
+  const controllers = sseClients.get(deviceId);
+  if (!controllers || controllers.size === 0) return;
+
+  const encoder = new TextEncoder();
+  const message = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  const encoded = encoder.encode(message);
+
+  for (const controller of controllers) {
+    try {
+      controller.enqueue(encoded);
+    } catch (_) {
+      controllers.delete(controller);
+    }
+  }
+}
+
 console.log(`🚀 Marveluzz Hub Starting on http://${HOST}:${PORT}`);
 if (mockDb) {
   console.log("ℹ️ Running in Local Standalone Mode (Using in-memory Supabase Mock Engine).");
@@ -45,7 +65,58 @@ async function handler(req: Request): Promise<Response> {
 
   try {
     // --------------------------------------------------------
-    // 1. IoT Ingest API: UI Layout Registration
+    // 1. Server-Sent Events (SSE) Permanent Connection Endpoint
+    // --------------------------------------------------------
+    if (path === "/api/device/events" && req.method === "GET") {
+      const deviceId = url.searchParams.get("deviceId");
+      if (!deviceId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing deviceId query param" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      let intervalId: number;
+
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (!sseClients.has(deviceId)) {
+            sseClients.set(deviceId, new Set());
+          }
+          sseClients.get(deviceId)!.add(controller);
+
+          // Initial connection handshake
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ deviceId, status: "connected" })}\n\n`));
+
+          // 15s keepalive ping
+          intervalId = setInterval(() => {
+            try {
+              controller.enqueue(encoder.encode(`: ping\n\n`));
+            } catch (_) {
+              clearInterval(intervalId);
+              sseClients.get(deviceId)?.delete(controller);
+            }
+          }, 15000);
+        },
+        cancel(controller) {
+          clearInterval(intervalId);
+          sseClients.get(deviceId)?.delete(controller);
+        }
+      });
+
+      return new Response(body, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        }
+      });
+    }
+
+    // --------------------------------------------------------
+    // 2. IoT Ingest API: UI Layout Registration
     // --------------------------------------------------------
     if (path === "/api/device/ui_definition" && req.method === "POST") {
       const body = await req.json();
@@ -69,13 +140,16 @@ async function handler(req: Request): Promise<Response> {
         mockDb.registerUIDefinition(deviceId, deviceKey, layoutDef);
       }
 
+      // Broadcast SSE UI layout update event
+      broadcastSseEvent(deviceId, "ui_definition", { deviceId, layoutDef });
+
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
     // --------------------------------------------------------
-    // 2. IoT Ingest API: Telemetry Packet Ingest & Command Retrieval
+    // 3. IoT Ingest API: Telemetry Packet Ingest & Command Retrieval
     // --------------------------------------------------------
     if (path === "/api/device/telemetry" && req.method === "POST") {
       const body = await req.json();
@@ -102,13 +176,16 @@ async function handler(req: Request): Promise<Response> {
         pendingCommands = mockDb.ingestTelemetry(deviceId, deviceKey, data);
       }
 
+      // Broadcast SSE live telemetry event
+      broadcastSseEvent(deviceId, "telemetry", { deviceId, data });
+
       return new Response(JSON.stringify({ success: true, commands: pendingCommands }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
     // --------------------------------------------------------
-    // 3. Client API: Queue Control Command
+    // 4. Client API: Queue Control Command
     // --------------------------------------------------------
     if (path === "/api/device/command" && req.method === "POST") {
       const body = await req.json();
@@ -134,13 +211,16 @@ async function handler(req: Request): Promise<Response> {
         commandId = mockDb.queueCommand(deviceId, target, action, value);
       }
 
+      // Broadcast SSE command event instantly to connected IoT node!
+      broadcastSseEvent(deviceId, "command", { commandId, deviceId, target, action, value });
+
       return new Response(JSON.stringify({ success: true, commandId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
     // --------------------------------------------------------
-    // 4. Client API: Directory Device List
+    // 5. Client API: Directory Device List
     // --------------------------------------------------------
     if (path === "/api/devices" && req.method === "GET") {
       let deviceList: Array<unknown> = [];
@@ -168,7 +248,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 5. Client API: Device Storage Stats & Metrics
+    // 6. Client API: Device Storage Stats & Metrics
     // --------------------------------------------------------
     if (path === "/api/devices/stats" && req.method === "GET") {
       const deviceId = url.searchParams.get("device_id");
@@ -206,7 +286,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 6. Client API: Wipe Device Data
+    // 7. Client API: Wipe Device Data
     // --------------------------------------------------------
     if (path === "/api/devices/delete" && req.method === "POST") {
       const body = await req.json();
@@ -232,7 +312,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 7. Client API: Memory & System Diagnostics
+    // 8. Client API: Memory & System Diagnostics
     // --------------------------------------------------------
     if (path === "/api/debug/memory" && req.method === "GET") {
       const mem = Deno.memoryUsage();
@@ -246,6 +326,7 @@ async function handler(req: Request): Promise<Response> {
           externalMb: (mem.external / (1024 * 1024)).toFixed(2)
         },
         uptimeSeconds: uptimeSec,
+        activeSseClients: Array.from(sseClients.values()).reduce((acc, set) => acc + set.size, 0),
         mode: mockDb ? "Standalone Mock Engine" : "Supabase Cloud Production"
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -253,7 +334,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 8. Client API: Config / Public Supabase Keys for Frontend
+    // 9. Client API: Config / Public Supabase Keys for Frontend
     // --------------------------------------------------------
     if (path === "/api/config") {
       return new Response(JSON.stringify({
@@ -266,7 +347,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // --------------------------------------------------------
-    // 9. Static File Serving (Frontend Assets & HTML Views)
+    // 10. Static File Serving (Frontend Assets & HTML Views)
     // --------------------------------------------------------
     if (path === "/" || path === "/devices" || path === "/devices/stats") {
       const html = await Deno.readTextFile("./public/index.html");
