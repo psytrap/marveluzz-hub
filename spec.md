@@ -408,7 +408,10 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 ## 7. Future Enhancements & TODO Roadmap
 
 ### UI & Design
-- [ ] **Wipe Data Button Styling**: The "Wipe Data" button in the Device Directory should match the visual style of the storage/stats button from `Every-Panel` (same dimensions, color treatment, and hover states for design consistency across projects).
+- [ ] **Device Storage Stats Page** (`/devices/stats?device_id=...`): Port the dedicated storage & diagnostics page from `Every-Panel`. Currently Marveluzz Hub exposes a raw "Wipe Data" `btn-delete` directly in the Device Directory row. Instead, replace it with a "Storage Stats" link (muted secondary style matching Every-Panel) that navigates to a full stats page containing:
+  - **4 metric cards**: Total telemetry history records, estimated storage footprint (Bytes/KB/MB), retention policy (TTL), device secret key
+  - **Retention Policy control**: Dropdown (1 / 7 / 30 / 365 days / Infinite) + "Apply Policy" button → `POST /api/devices/settings`
+  - **Danger Zone section**: "Wipe Device Storage" `btn-delete` button → `POST /api/devices/delete`, then redirect back to `/devices`
 
 ### Verification & Quality Assurance
 - [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
@@ -422,7 +425,7 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
   - Implement ESP32 captive portal auto-discovery handshake to receive and store `deviceId` and `deviceKey` permanently in NVS Flash memory upon valid PIN authentication.
 
 ### Security, Analytics & Ecosystem Integrations
-- [ ] **GitHub OAuth & User Access Control**: Implement optional GitHub OAuth authentication (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ALLOWED_GITHUB_USERS`, `DISABLE_AUTH`) to protect dashboard access.
+- [x] **GitHub OAuth & User Access Control**: Implement optional GitHub OAuth & Mock Authentication (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `MOCK_AUTH`, `ALLOWED_GITHUB_USERS`, `DISABLE_AUTH`) to protect dashboard access, complete with full integration test suite (`tests/auth_test.ts`).
 - [ ] **Server-Side Telemetry Downsampling & Aggregation**: Implement configurable telemetry logging downsampling policy (1m/5m windows) to store consolidated `min`, `max`, `avg`, and `latest` metric data points in database history.
 - [ ] **Home Assistant & MQTT Integration**: Expose registered device entities dynamically to Home Assistant via MQTT auto-discovery and WebSocket/HTTP bridges.
 - [ ] **Public Read-Only Dashboard Sharing**: Allow device owners to share public, read-only panel links with unauthenticated users while strictly locking exclusive control lease write privileges.

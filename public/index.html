@@ -25,6 +25,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
         </svg>
         <span id="dashboard-title">Marveluzz Hub</span>
+        <span id="mock-auth-badge" style="display:none; font-size:10px; background:#d97706; color:white; padding:2px 8px; border-radius:9999px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-left:8px; vertical-align:middle;">Mock Auth</span>
       </h1>
     </div>
 
@@ -40,6 +41,9 @@
 
       <!-- Lease Control Lock Action Button -->
       <button id="btn-control" class="btn-action" style="display:none;" onclick="toggleControlLease()">Acquire Control</button>
+
+      <!-- Logout Action Button -->
+      <a href="/logout" class="btn-logout" id="logout-btn" style="display:none;">Logout</a>
     </div>
   </header>
 
@@ -64,9 +68,9 @@
   <!-- Version & Self-Test Status Footer Bar -->
   <footer class="footer-bar">
     <div class="version-info">
-      <span>UI Version: <strong id="ui-version-badge">v1.0.6</strong></span>
+      <span>UI Version: <strong id="ui-version-badge">v1.0.7</strong></span>
       <span class="version-separator">•</span>
-      <span>DB Schema: <strong id="db-version-badge">v1.0.6</strong></span>
+      <span>DB Schema: <strong id="db-version-badge">v1.0.7</strong></span>
       <span class="version-separator">•</span>
       <span id="self-test-badge" class="self-test-status ok">
         <span class="status-dot-mini"></span>

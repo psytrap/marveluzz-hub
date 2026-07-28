@@ -31,6 +31,15 @@ async function initApp() {
       console.log("ℹ️ Running with Standalone Local Ingest Server.");
     }
 
+    if (config.disableAuth === false) {
+      const logoutBtn = document.getElementById("logout-btn");
+      if (logoutBtn) logoutBtn.style.display = "inline-block";
+    }
+    if (config.mockAuth && !config.disableAuth) {
+      const mockBadge = document.getElementById("mock-auth-badge");
+      if (mockBadge) mockBadge.style.display = "inline-block";
+    }
+
     if (isDirectoryPage) {
       loadDeviceDirectory();
     } else {

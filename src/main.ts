@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.0.7";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -23,6 +23,84 @@ const supabaseKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
 const supabase = (SUPABASE_URL && supabaseKey)
   ? createClient(SUPABASE_URL, supabaseKey)
   : null;
+
+// GitHub OAuth & Session Authentication Configuration
+export const DISABLE_AUTH = Deno.env.get("DISABLE_AUTH") === "true";
+export const GITHUB_CLIENT_ID = Deno.env.get("GITHUB_CLIENT_ID") || "";
+export const GITHUB_CLIENT_SECRET = Deno.env.get("GITHUB_CLIENT_SECRET") || "";
+export const MOCK_AUTH = !GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || Deno.env.get("MOCK_AUTH") === "true";
+export const ALLOWED_GITHUB_USERS = (Deno.env.get("ALLOWED_GITHUB_USERS") || "")
+  .split(",")
+  .map(u => u.trim().toLowerCase())
+  .filter(Boolean);
+export const COOKIE_NAME = "marveluzz_session";
+export const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+export const activeSessions = new Map<string, { username: string; expires: number }>();
+
+export function createSession(sessionId: string, username: string): number {
+  const expires = Date.now() + SESSION_EXPIRY_MS;
+  activeSessions.set(sessionId, { username, expires });
+  return expires;
+}
+
+export function checkSession(sessionId: string): string | null {
+  if (!sessionId) return null;
+  const sess = activeSessions.get(sessionId);
+  if (!sess) return null;
+  if (Date.now() > sess.expires) {
+    activeSessions.delete(sessionId);
+    return null;
+  }
+  return sess.username;
+}
+
+export function deleteSession(sessionId: string) {
+  activeSessions.delete(sessionId);
+}
+
+function getLoginHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Marveluzz Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card glass">
+      <h2>Marveluzz Hub <span style="font-size:12px; font-weight:400; opacity:0.6; vertical-align:middle; margin-left:8px;">v${APP_VERSION}</span></h2>
+      <p>${MOCK_AUTH ? "Developer testing login interface" : "Secure login with your GitHub account"}</p>
+      
+      ${MOCK_AUTH ? `
+      <!-- Developer Mock Auth Input Form -->
+      <form action="/login/callback" method="GET" style="display:flex; flex-direction:column; gap:12px; margin-top:20px; width:100%;">
+        <div style="background: rgba(217, 119, 6, 0.15); border: 1px solid rgba(217, 119, 6, 0.4); border-radius: 8px; padding: 10px; color: #fcd34d; font-size: 12px; text-align: center; font-weight:500;">
+          ⚠️ Mock Authentication Active
+        </div>
+        <input type="text" name="code" placeholder="Enter mock username (e.g. alice)" required style="padding:10px 14px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-primary); font-family:'Outfit', sans-serif; outline:none; font-size:14px; text-align:center;">
+        <button type="submit" class="btn-action active-lease" style="padding:10px; font-weight:600; cursor:pointer;">Developer Login</button>
+      </form>
+      ` : `
+      <a href="/login/github" class="btn-github">
+        <svg style="width:24px;height:24px;" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z"/></svg>
+        <span>Authenticate with GitHub</span>
+      </a>
+      `}
+      
+      <div id="error-box"></div>
+    </div>
+  </div>
+
+  <script src="/public/login.js"></script>
+</body>
+</html>`;
+}
 
 // SSE Client Registry (deviceId -> Set of SSE controllers)
 const sseClients = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>();
@@ -82,7 +160,7 @@ async function verifyContractCompatibility() {
       actualSchemaVersion: actualSchema,
       error: isMatch ? undefined : `Version Mismatch: Edge Server requires schema '${REQUIRED_SCHEMA_VERSION}', DB returned '${actualSchema}'`
     };
-  } catch (e) {
+  } catch (e: any) {
     return {
       compatible: false,
       appVersion: APP_VERSION,
@@ -126,8 +204,140 @@ async function handler(req: Request): Promise<Response> {
 
   try {
     // --------------------------------------------------------
-    // 1. Server-Sent Events (SSE) Permanent Connection Endpoint
+    // Session Cookie Authentication Checking
     // --------------------------------------------------------
+    let isAuthorized = DISABLE_AUTH;
+    let sessionId = "";
+
+    if (!DISABLE_AUTH) {
+      const cookieHeader = req.headers.get("cookie") || "";
+      const match = cookieHeader.match(new RegExp(`(^| )${COOKIE_NAME}=([^;]+)`));
+      sessionId = match ? match[2] : "";
+      const username = checkSession(sessionId);
+      isAuthorized = username !== null;
+    }
+
+    // --------------------------------------------------------
+    // Unauthenticated & OAuth Authentication Routes
+    // --------------------------------------------------------
+    if (path === "/login" && req.method === "GET") {
+      if (isAuthorized) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+      return new Response(getLoginHtml(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+
+    if (path === "/login/github" && req.method === "GET") {
+      if (DISABLE_AUTH) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+      if (MOCK_AUTH) {
+        const mockCode = url.searchParams.get("mock_code") || "mock_user";
+        return Response.redirect(`${url.origin}/login/callback?code=${mockCode}`, 302);
+      }
+      if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+        console.error("[Auth] GitHub OAuth credentials not configured!");
+        return Response.redirect(`${url.origin}/login?error=no_config`, 302);
+      }
+
+      const redirectUri = `${url.origin}/login/callback`;
+      const authorizeUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&scope=read:user`;
+
+      return Response.redirect(authorizeUrl, 302);
+    }
+
+    if (path === "/login/callback" && req.method === "GET") {
+      if (DISABLE_AUTH) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+
+      const code = url.searchParams.get("code");
+      if (!code) {
+        return Response.redirect(`${url.origin}/login?error=oauth_failed`, 302);
+      }
+
+      let gitUsername = "";
+
+      if (MOCK_AUTH) {
+        gitUsername = code.toLowerCase();
+      } else {
+        try {
+          const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify({
+              client_id: GITHUB_CLIENT_ID,
+              client_secret: GITHUB_CLIENT_SECRET,
+              code,
+              redirect_uri: `${url.origin}/login/callback`,
+            }),
+          });
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          if (!accessToken) throw new Error("No access token from GitHub");
+
+          const userResponse = await fetch("https://api.github.com/user", {
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "User-Agent": "Marveluzz-Hub-App",
+            },
+          });
+
+          const userData = await userResponse.json();
+          gitUsername = userData.login?.toLowerCase();
+          if (!gitUsername) throw new Error("Could not get username from GitHub profile");
+        } catch (err) {
+          console.error("[Auth] GitHub OAuth failed:", err);
+          return Response.redirect(`${url.origin}/login?error=oauth_failed`, 302);
+        }
+      }
+
+      if (ALLOWED_GITHUB_USERS.length > 0 && !ALLOWED_GITHUB_USERS.includes(gitUsername)) {
+        console.warn(`[Auth] User '${gitUsername}' attempted login but is not in allowed list.`);
+        return Response.redirect(`${url.origin}/login?error=not_allowed`, 302);
+      }
+
+      const randomSessionId = crypto.randomUUID();
+      const expires = createSession(randomSessionId, gitUsername);
+      const expiresDate = new Date(expires).toUTCString();
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": "/",
+          "Set-Cookie": `${COOKIE_NAME}=${randomSessionId}; Path=/; HttpOnly; SameSite=Strict; Expires=${expiresDate}`,
+        },
+      });
+    }
+
+    if (path === "/logout") {
+      if (sessionId) {
+        deleteSession(sessionId);
+      }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": "/login",
+          "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+        },
+      });
+    }
+
+    // Protect Client Dashboard Web APIs
+    if (path.startsWith("/api/devices") || path === "/api/device/command") {
+      if (!isAuthorized) {
+        return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+    }
     if (path === "/api/device/events" && req.method === "GET") {
       const deviceId = url.searchParams.get("deviceId");
       if (!deviceId) {
@@ -227,7 +437,7 @@ async function handler(req: Request): Promise<Response> {
       } else if (mockDb) {
         try {
           mockDb.registerUIDefinition(deviceId, deviceKey, layoutDef);
-        } catch (e) {
+        } catch (e: any) {
           return new Response(JSON.stringify({ success: false, error: e.message }), {
             status: 401,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -275,7 +485,7 @@ async function handler(req: Request): Promise<Response> {
       } else if (mockDb) {
         try {
           executedCommands = mockDb.ingestTelemetry(deviceId, deviceKey, data);
-        } catch (e) {
+        } catch (e: any) {
           return new Response(JSON.stringify({ success: false, error: e.message }), {
             status: 401,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -327,7 +537,7 @@ async function handler(req: Request): Promise<Response> {
         }
       }
 
-      let commandId = crypto.randomUUID();
+      let commandId: string = crypto.randomUUID();
 
       if (supabase) {
         const { data: cmdInsert, error } = await supabase
@@ -493,7 +703,9 @@ async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({
         supabaseUrl: SUPABASE_URL || "",
         supabaseAnonKey: SUPABASE_ANON_KEY || "",
-        isStandaloneMock: !!mockDb
+        isStandaloneMock: !!mockDb,
+        disableAuth: DISABLE_AUTH,
+        mockAuth: MOCK_AUTH
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
@@ -503,6 +715,9 @@ async function handler(req: Request): Promise<Response> {
     // 10. Static File Serving (Frontend Assets & HTML Views)
     // --------------------------------------------------------
     if (path === "/" || path === "/devices" || path === "/devices/stats") {
+      if (!isAuthorized) {
+        return Response.redirect(`${url.origin}/login`, 302);
+      }
       const html = await Deno.readTextFile("./public/index.html");
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
@@ -521,7 +736,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     return new Response("Not Found", { status: 404 });
-  } catch (e) {
+  } catch (e: any) {
     console.error("❌ Handler Error:", e.message);
     return new Response(JSON.stringify({ success: false, error: e.message }), {
       status: 500,

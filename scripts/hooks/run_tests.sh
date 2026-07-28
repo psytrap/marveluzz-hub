@@ -11,5 +11,5 @@ if [ $TEST_EXIT_CODE -ne 0 ]; then
   exit 1
 fi
 
-echo "✅ [Module 1/2] All 20 integration tests passed cleanly."
+echo "✅ [Module 1/2] All test suites (30 sub-steps) passed cleanly."
 exit 0

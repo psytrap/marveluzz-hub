@@ -20,6 +20,7 @@ Unlike static dashboards, `Marveluzz Hub` does not hardcode sensor layouts. Conn
 * **100% Direct-to-Supabase Mode (Zero-Server Operations)**: IoT microcontrollers can post telemetry directly to Supabase PostgREST (`/rest/v1/rpc/ingest_telemetry`) with <5ms direct WebSocket command push.
 * **Self-Configuring UI (Device-Driven)**: IoT nodes supply their layout schema (buttons, sliders, gauges, text fields, charts, dividers, image streams) over HTTP POST.
 * **Sleek Glassmorphism UI**: Identical dark-mode aesthetic to `Every-Panel` powered by Google Font *Outfit* and Chart.js telemetry plots.
+* **GitHub OAuth & Developer Mock Auth**: Protect dashboard access with GitHub OAuth login, allowed user access control lists (`ALLOWED_GITHUB_USERS`), and a built-in developer mock authentication mode (`MOCK_AUTH=true`).
 * **7-State Diagnostic Status Machine**: Live visual state transitions (`disconnected`, `detached`, `initializing`, `stale`, `fault`, `live`, `control`).
 * **Exclusive Control Lease**: Single-controller write lock for IoT nodes to prevent conflicting inputs across multiple browser tabs.
 * **Fast Time-Series History**: PostgreSQL database indexing provides fast O(1) telemetry history retrieval.
@@ -73,22 +74,24 @@ marveluzz-hub/
 ├── public/
 │   ├── index.html        # Main dashboard HTML template
 │   ├── style.css         # Glassmorphism design tokens & styles
-│   └── app.js            # Frontend logic, 7-state badge, & 8-widget renderer engine
+│   ├── app.js            # Frontend logic, 7-state badge, & 8-widget renderer engine
+│   └── login.js          # Authentication error notification handler
 ├── examples/
 │   ├── device_emulator.ts # Interactive IoT node simulator web panel (Port 8001, 30s interval)
 │   └── esp32_device/     # ESP32 C++ Microcontroller Arduino firmware (5m interval)
 │       └── esp32_device.ino
 └── tests/
-    ├── local_test.ts       # Local test suite (20 tests, no live services)
-    ├── staging_test.ts     # Live staging integration test suite (5/5 passing)
+    ├── local_test.ts       # Local test suite (21 unit & mock tests)
+    ├── auth_test.ts        # GitHub OAuth & Mock Auth integration test suite (2 tests)
+    ├── staging_test.ts     # Live staging integration test suite (with auto mock auth support)
     └── supabase_mock.ts    # Realistic Supabase in-memory mock engine
 ```
 
 ---
 
-## 🔑 Recommended 4 Supabase Environment Variables
+## 🔑 Environment Variables
 
-Supabase recommends configuring these 4 environment variables for edge & server deployments:
+### Core Supabase Configuration
 
 | Environment Variable | Description | Scope / Usage |
 | :--- | :--- | :--- |
@@ -96,6 +99,46 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 | `SUPABASE_ANON_KEY` | Public anonymous API key (enforces Row Level Security) | Public (Client Browser / Realtime) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Admin secret API key (bypasses RLS for ingest RPCs) | Server-Only (Deno Edge Functions) |
 | `SUPABASE_JWT_SECRET` | Secret key for verifying & decoding User JWT auth tokens | Server-Only (Offline Token Verification) |
+
+### GitHub OAuth & User Access Control
+
+| Environment Variable | Description | Default |
+| :--- | :--- | :--- |
+| `DISABLE_AUTH` | Set to `"true"` to bypass login for local use, or `"false"` to enforce authentication | `"false"` |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID | `""` |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App Client Secret | `""` |
+| `ALLOWED_GITHUB_USERS` | Comma-separated list of permitted GitHub usernames (e.g. `alice,bob`) | `""` (allow all authenticated users) |
+
+---
+
+### 🔒 GitHub OAuth Setup & Access Control Guide
+
+#### Option A: Production GitHub OAuth Application Setup
+
+1. **Create GitHub OAuth App**:
+   - Go to [GitHub Developer Settings -> OAuth Apps -> New OAuth App](https://github.com/settings/applications/new).
+   - **Application name**: `Marveluzz Hub`
+   - **Homepage URL**: `https://<your-project>.deno.dev` (or `http://localhost:8000` for local dev)
+   - **Authorization callback URL**: `https://<your-project>.deno.dev/login/callback` (or `http://localhost:8000/login/callback`)
+2. **Generate Client Secret**:
+   - Click **Generate a new client secret** and copy the Client ID and Client Secret.
+3. **Configure Environment Variables**:
+   ```env
+   DISABLE_AUTH=false
+   MOCK_AUTH=false
+   GITHUB_CLIENT_ID=your_github_client_id
+   GITHUB_CLIENT_SECRET=your_github_client_secret
+   ALLOWED_GITHUB_USERS=alice,bob,your_github_username
+   ```
+
+#### Option B: Local Mode (Bypass Login)
+
+For running local server instances for regular local use without needing to log in or configure GitHub OAuth:
+
+```env
+DISABLE_AUTH=true
+```
+- Access to the dashboard and API endpoints is open, bypassing the login screen entirely.
 
 ---
 
@@ -116,23 +159,17 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 ### Step 2: Deploy Edge Server to Deno Deploy
 1. Log in to [Deno Deploy Dashboard](https://dash.deno.com).
 2. Create a project linked to your GitHub repo and set the **Entrypoint** to `src/main.ts`.
-3. Configure the 4 environment variables under **Settings -> Environment Variables**:
-   ```env
-   SUPABASE_URL=https://qmketwlyeexumcxboagc.supabase.co
-   SUPABASE_ANON_KEY=<your-publishable-anon-key>
-   SUPABASE_SERVICE_ROLE_KEY=<your-service-role-secret-key>
-   SUPABASE_JWT_SECRET=<your-jwt-secret-key>
-   ```
+3. Configure environment variables under **Settings -> Environment Variables**.
 
 ---
 
 ### Step 3: Commands & Test Runner
 
 ```bash
-# 1. Run local test suite (20/20 passing)
+# 1. Run full local test suite (23/23 passing)
 deno task test
 
-# 2. Run live staging integration test suite (read from staging.env)
+# 2. Run live staging integration test suite (automatic mock auth login if enabled)
 deno task test:staging
 
 # 3. Start local edge server
