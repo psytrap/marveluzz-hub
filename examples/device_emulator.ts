@@ -1,7 +1,8 @@
 // Marveluzz Hub - Interactive IoT Device Emulator Web Panel (Port 8001)
-// Preserves Every-Panel's interactive hardware knob controls & web UI
+// Supports both Direct-to-Supabase Cloud Ingest & Edge Gateway Ingest
 
 const PORT = Number(Deno.env.get("PORT")) || 8001;
+const DEFAULT_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="en">
@@ -99,7 +100,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     main {
       flex: 1;
       display: grid;
-      grid-template-columns: 350px 1fr;
+      grid-template-columns: 380px 1fr;
       gap: 30px;
       max-width: 1200px;
       width: 100%;
@@ -220,7 +221,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       display: flex;
       flex-direction: column;
       gap: 15px;
-      height: 600px;
+      height: 640px;
     }
 
     .console-header {
@@ -273,20 +274,30 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <!-- Left Configuration Side -->
     <div style="display:flex; flex-direction:column; gap:30px;">
       <div class="glass config-card">
-        <h3>Server Config</h3>
+        <h3 style="margin-bottom:4px;">Target Server Config</h3>
+        <p style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">Supports Direct Supabase Cloud Ingest or Edge Server Gateway</p>
+        
         <div class="form-group">
-          <label>Marveluzz Hub URL</label>
-          <input type="text" id="hub-url" class="input-field" value="http://localhost:8000">
+          <label>Ingest Target URL</label>
+          <input type="text" id="hub-url" class="input-field" value="https://qmketwlyeexumcxboagc.supabase.co">
         </div>
+
+        <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+          <label style="color:#f59e0b; font-weight:600;">Supabase Anon Key (Publishable Key)</label>
+          <input type="text" id="anon-key" class="input-field" value="${DEFAULT_ANON_KEY}" placeholder="Paste SUPABASE_ANON_KEY here for Direct Mode">
+        </div>
+
         <div class="form-group">
-          <label>Emulator Device ID</label>
+          <label>Device ID (UUID)</label>
           <input type="text" id="device-id" class="input-field" value="32323232-3232-4232-8232-28c13340c86c">
         </div>
+
         <div class="form-group">
-          <label>Emulator Device Key</label>
+          <label>Device Passcode / Secret Key</label>
           <input type="password" id="device-key" class="input-field" value="secret_passcode_123">
         </div>
-        <button id="connect-btn" class="btn" onclick="toggleConnection()">Connect to Hub</button>
+
+        <button id="connect-btn" class="btn" onclick="toggleConnection()">Connect & Stream</button>
       </div>
 
       <!-- Simulated hardware state controls -->
@@ -312,7 +323,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         <div class="form-group">
           <label>Constant Sensor Updates</label>
           <div class="knob-row">
-            <span>Auto-Stream Telemetry (3s)</span>
+            <span>Auto-Stream Telemetry (30s)</span>
             <input type="checkbox" id="knob-autostream" style="width:20px; height:20px; cursor:pointer;" checked onchange="toggleAutoStream(this.checked)">
           </div>
         </div>
@@ -330,7 +341,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         <button onclick="clearLogs()" class="btn-action" style="font-size:11px; padding:4px 8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); border-radius:4px; cursor:pointer;">Clear Logs</button>
       </div>
       <div id="terminal" class="console-terminal">
-        <div class="log-line"><span class="log-time">[System]</span> Ready. Click Connect to Hub to start streaming telemetry.</div>
+        <div class="log-line"><span class="log-time">[System]</span> Ready. Paste SUPABASE_ANON_KEY and click Connect & Stream.</div>
       </div>
     </div>
   </main>
@@ -344,6 +355,16 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let fanVal = false;
     let hasFault = false;
     let autoStreamActive = true;
+
+    function getCleanHubUrl() {
+      const rawUrl = document.getElementById("hub-url").value.trim();
+      return rawUrl.replace(/\\/+$/, "");
+    }
+
+    function isDirectSupabaseMode() {
+      const url = getCleanHubUrl();
+      return url.includes(".supabase.co");
+    }
 
     function log(message, category = "Info") {
       const term = document.getElementById("terminal");
@@ -401,7 +422,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       if (isConnected) {
         if (autoStreamActive) {
           if (telemetryTimer) clearInterval(telemetryTimer);
-          telemetryTimer = setInterval(sendTelemetryPacket, 3000);
+          telemetryTimer = setInterval(sendTelemetryPacket, 30000);
           log("Constant sensor updates started.", "System");
         } else {
           if (telemetryTimer) {
@@ -422,38 +443,61 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     async function connect() {
-      const hubUrl = document.getElementById("hub-url").value.trim();
+      const hubUrl = getCleanHubUrl();
       const deviceId = document.getElementById("device-id").value.trim();
       const deviceKey = document.getElementById("device-key").value.trim();
+      const anonKey = document.getElementById("anon-key").value.trim();
       const connectBtn = document.getElementById("connect-btn");
       const badge = document.getElementById("connection-badge");
       const statusText = document.getElementById("status-text");
 
-      log("Connecting to Marveluzz Hub: " + hubUrl, "System");
+      const isDirect = isDirectSupabaseMode();
+      if (isDirect && !anonKey) {
+        log("⚠️ Direct Supabase Mode requires pasting your SUPABASE_ANON_KEY (Publishable Key) into the amber box!", "Error");
+        return;
+      }
 
-      // 1. Upload UI Layout Definition
+      log("Connecting target: " + hubUrl + (isDirect ? " (Direct Supabase Cloud Mode)" : " (Edge Server Mode)"), "System");
+
+      const layoutDef = {
+        title: "ESP32 Temperature Node",
+        type: "layout",
+        layout: [
+          { type: "number", properties: { label: "DS18B20 Temperature (°C)", id: "temperature", value: String(tempVal), readonly: "true" } },
+          { type: "button", properties: { label: "Cooling Fan Switch", id: "fan_toggle", value: String(fanVal) } },
+          { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s", readonly: "true" } }
+        ]
+      };
+
       try {
-        const layoutRes = await fetch(\`\${hubUrl}/api/device/ui_definition\`, {
+        let endpoint = \`\${hubUrl}/api/device/ui_definition\`;
+        let headers = { "Content-Type": "application/json" };
+        let bodyPayload = { deviceId, deviceKey, layoutDef };
+
+        if (isDirect) {
+          endpoint = \`\${hubUrl}/rest/v1/rpc/register_ui_definition\`;
+          headers["apikey"] = anonKey;
+          headers["Authorization"] = "Bearer " + anonKey;
+          bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_layout_def: layoutDef };
+        }
+
+        const layoutRes = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceId,
-            deviceKey,
-            layoutDef: {
-              title: "ESP32 Temperature Node",
-              type: "layout",
-              layout: [
-                { type: "number", properties: { label: "DS18B20 Temperature (°C)", id: "temperature", value: String(tempVal), readonly: "true" } },
-                { type: "button", properties: { label: "Cooling Fan Switch", id: "fan_toggle", value: String(fanVal) } },
-                { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s", readonly: "true" } }
-              ]
-            }
-          })
+          headers,
+          body: JSON.stringify(bodyPayload)
         });
 
+        if (!layoutRes.ok) {
+          const errText = await layoutRes.text();
+          log(\`❌ HTTP Error \${layoutRes.status}: \${errText}\`, "Error");
+          return;
+        }
+
         const layoutData = await layoutRes.json();
-        if (layoutData.success) {
-          log("✅ UI Layout Schema registered successfully.", "System");
+        const isSuccess = isDirect ? (layoutData === true || layoutData.success === true) : layoutData.success;
+
+        if (isSuccess) {
+          log("✅ UI Layout Schema registered directly in Supabase.", "System");
           isConnected = true;
           connectBtn.innerText = "Disconnect";
           connectBtn.className = "btn btn-disconnect";
@@ -463,7 +507,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
           // Start Telemetry Ingest Loop
           sendTelemetryPacket();
           if (autoStreamActive) {
-            telemetryTimer = setInterval(sendTelemetryPacket, 3000);
+            telemetryTimer = setInterval(sendTelemetryPacket, 30000);
           }
         } else {
           log("❌ Layout Registration Failed: " + (layoutData.error || "Unauthorized"), "Error");
@@ -483,46 +527,62 @@ const HTML_CONTENT = `<!DOCTYPE html>
       const badge = document.getElementById("connection-badge");
       const statusText = document.getElementById("status-text");
 
-      connectBtn.innerText = "Connect to Hub";
+      connectBtn.innerText = "Connect & Stream";
       connectBtn.className = "btn";
       badge.className = "status-badge disconnected";
       statusText.innerText = "Disconnected";
-      log("Disconnected from Hub.", "System");
+      log("Disconnected from Target.", "System");
     }
 
     async function sendTelemetryPacket() {
       if (!isConnected) return;
 
-      const hubUrl = document.getElementById("hub-url").value.trim();
+      const hubUrl = getCleanHubUrl();
       const deviceId = document.getElementById("device-id").value.trim();
       const deviceKey = document.getElementById("device-key").value.trim();
+      const anonKey = document.getElementById("anon-key").value.trim();
       const uptimeSec = Math.floor((Date.now() - startTime) / 1000);
+      const isDirect = isDirectSupabaseMode();
 
-      const payload = {
-        deviceId,
-        deviceKey,
-        data: {
-          temperature: Number(tempVal.toFixed(1)),
-          fan_toggle: fanVal,
-          uptime: \`\${uptimeSec}s\`,
-          status_text: hasFault ? "Fault Code E-04" : "Running Normally"
-        }
+      const telemetryData = {
+        temperature: Number(tempVal.toFixed(1)),
+        fan_toggle: fanVal,
+        uptime: \`\${uptimeSec}s\`,
+        status_text: hasFault ? "Fault Code E-04" : "Running Normally"
       };
 
       try {
-        const res = await fetch(\`\${hubUrl}/api/device/telemetry\`, {
+        let endpoint = \`\${hubUrl}/api/device/telemetry\`;
+        let headers = { "Content-Type": "application/json" };
+        let bodyPayload = { deviceId, deviceKey, data: telemetryData };
+
+        if (isDirect) {
+          endpoint = \`\${hubUrl}/rest/v1/rpc/ingest_telemetry\`;
+          headers["apikey"] = anonKey;
+          headers["Authorization"] = "Bearer " + anonKey;
+          bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_telemetry_data: telemetryData };
+        }
+
+        const res = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          headers,
+          body: JSON.stringify(bodyPayload)
         });
 
-        const data = await res.json();
-        if (data.success) {
-          log(\`Telemetry Sent -> Temp: \${tempVal.toFixed(1)}°C, Fan: \${fanVal ? 'ON' : 'OFF'}, Uptime: \${uptimeSec}s\`, "Info");
+        if (!res.ok) {
+          log(\`❌ Telemetry HTTP Error \${res.status}\`, "Error");
+          return;
+        }
 
-          // Handle executed commands returned from the server queue
-          if (data.commands && data.commands.length > 0) {
-            data.commands.forEach(cmd => {
+        const data = await res.json();
+        const isSuccess = isDirect ? Array.isArray(data) : data.success;
+        const commands = isDirect ? data : (data.commands || []);
+
+        if (isSuccess) {
+          log(\`Telemetry Direct Ingest -> Temp: \${tempVal.toFixed(1)}°C, Fan: \${fanVal ? 'ON' : 'OFF'}, Uptime: \${uptimeSec}s\`, "Info");
+
+          if (commands && commands.length > 0) {
+            commands.forEach(cmd => {
               log(\`Incoming Command Executed -> Target: '\${cmd.target}', Action: \${cmd.action}, Value: \${JSON.stringify(cmd.value)}\`, "Command");
               if (cmd.target === "fan_toggle") {
                 fanVal = !fanVal;
@@ -531,7 +591,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
             });
           }
         } else {
-          log("❌ Telemetry Ingest Error: " + data.error, "Error");
+          log("❌ Telemetry Ingest Error: " + (data.error || "Failed"), "Error");
         }
       } catch (e) {
         log("❌ Telemetry Request Failed: " + e.message, "Error");

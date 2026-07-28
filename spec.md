@@ -333,6 +333,12 @@ erDiagram
 - [x] **Step 5.1: Deno Integration Test Suite**: Implement `tests/integration_test.ts` and `tests/supabase_mock.ts`.
 - [ ] **Step 5.2: End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
 
+### Phase 6: One-Time Authentication & Device Pairing Workflow — [TODO]
+- [ ] **Step 6.1: One-Time Authentication & Zero-Dashboard PIN Pairing**:
+  - Implement 6-digit PIN one-time pairing endpoint (`POST /api/device/pair`) for Zero-Dashboard Plug & Play onboarding.
+  - Implement Hub UI "+ Add New Device" modal with 6-digit PIN generator & QR code renderer.
+  - Implement ESP32 captive portal auto-discovery handshake to receive and store `deviceId` and `deviceKey` permanently in NVS Flash memory upon valid PIN authentication.
+
 ---
 
 ## 5. Deployment Synchronization & Contract Security (Deno Deploy <-> Supabase)
