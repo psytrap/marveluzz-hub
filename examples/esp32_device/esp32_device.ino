@@ -6,13 +6,16 @@
  * - ESP32 Microcontroller Board
  * - DS18B20 OneWire Temperature Sensor (Pin GPIO 4)
  * - Relay Switch Output (Pin GPIO 5)
- * 
- * Update Interval: 5 minutes (300,000 ms / 300 seconds)
+ * - Emergency Hardware Fault Button (Pin GPIO 27)
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+
+#include "certificates.h"
+#include "TelemetryLogic.h"
 
 // -------------------------------------------------------------
 // 1. Network & Supabase Credentials
@@ -29,15 +32,22 @@ const char* DEVICE_ID = "32323232-3232-4232-8232-28c13340c86c";
 const char* DEVICE_KEY = "secret_passcode_123";
 
 // -------------------------------------------------------------
-// 2. Hardware Pin Assignments & Update Timers
+// 2. Hardware Pin Assignments & Global State
 // -------------------------------------------------------------
 const int RELAY_PIN = 5;
-const unsigned long UPDATE_INTERVAL_MS = 300000; // 5 Minutes (300,000 ms)
+const int EMERGENCY_BTN_PIN = 27;
+
+DeviceState deviceState;
 unsigned long lastUpdateMs = 0;
-bool relayState = false;
+
+void applyRelayHardwareState(bool active) {
+  deviceState.relayState = active;
+  digitalWrite(RELAY_PIN, deviceState.relayState ? HIGH : LOW);
+  Serial.printf("⚡ Relay Hardware Switched: %s\n", deviceState.relayState ? "ON" : "OFF");
+}
 
 // -------------------------------------------------------------
-// 3. Helper: Register Dynamic UI Layout Schema
+// 3. Register Dynamic UI Layout Schema via TelemetryLogic
 // -------------------------------------------------------------
 void registerUILayout() {
   if (WiFi.status() != WL_CONNECTED) return;
@@ -50,35 +60,12 @@ void registerUILayout() {
   http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
 
-  StaticJsonDocument<512> doc;
-  doc["p_device_id"] = DEVICE_ID;
-  doc["p_device_key"] = DEVICE_KEY;
+  String jsonPayload = TelemetryLogic::buildLayoutJson(DEVICE_ID, DEVICE_KEY);
 
-  JsonObject layoutDef = doc.createNestedObject("p_layout_def");
-  layoutDef["title"] = "ESP32 Field Temperature Node";
-  layoutDef["type"] = "layout";
-
-  JsonArray layout = layoutDef.createNestedArray("layout");
-  
-  JsonObject item1 = layout.createNestedObject();
-  item1["type"] = "number";
-  JsonObject prop1 = item1.createNestedObject("properties");
-  prop1["label"] = "Field Sensor Temperature (°C)";
-  prop1["id"] = "temperature";
-  prop1["readonly"] = "true";
-
-  JsonObject item2 = layout.createNestedObject();
-  item2["type"] = "button";
-  JsonObject prop2 = item2.createNestedObject("properties");
-  prop2["label"] = "Water Pump Relay";
-  prop2["id"] = "pump_relay";
-
-  String jsonBody;
-  serializeJson(doc, jsonBody);
-
-  int httpCode = http.POST(jsonBody);
+  int httpCode = http.POST(jsonPayload);
   if (httpCode == 200 || httpCode == 204) {
     Serial.println("✅ ESP32 UI Layout Schema Registered Successfully.");
+    deviceState.layoutSent = true;
   } else {
     Serial.printf("❌ UI Layout Registration Error %d: %s\n", httpCode, http.getString().c_str());
   }
@@ -86,7 +73,7 @@ void registerUILayout() {
 }
 
 // -------------------------------------------------------------
-// 4. Helper: Send Telemetry & Fetch Pending Commands (5 Min Interval)
+// 4. Send Telemetry & Process Executed Command Responses
 // -------------------------------------------------------------
 void sendTelemetryAndPollCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
@@ -99,45 +86,32 @@ void sendTelemetryAndPollCommands() {
   http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
 
-  // Simulated DS18B20 Temperature Reading
+  // Read hardware status / simulated DS18B20 sensor reading
   float temperatureC = 23.5 + random(-10, 10) / 10.0;
   unsigned long uptimeSec = millis() / 1000;
 
-  StaticJsonDocument<512> doc;
-  doc["p_device_id"] = DEVICE_ID;
-  doc["p_device_key"] = DEVICE_KEY;
+  // Check emergency fault button state (Active LOW)
+  if (digitalRead(EMERGENCY_BTN_PIN) == LOW) {
+    deviceState.hasFault = true;
+  }
 
-  JsonObject telemetry = doc.createNestedObject("p_telemetry_data");
-  telemetry["temperature"] = temperatureC;
-  telemetry["pump_relay"] = relayState;
-  telemetry["uptime"] = String(uptimeSec) + "s";
-  telemetry["interval"] = "5m";
+  String jsonPayload = TelemetryLogic::buildTelemetryJson(
+    DEVICE_ID, DEVICE_KEY, temperatureC, deviceState.relayState, 
+    uptimeSec, deviceState.viewersActive, deviceState.hasFault
+  );
 
-  String jsonBody;
-  serializeJson(doc, jsonBody);
+  Serial.printf("📡 Sending Telemetry [%s] -> Temp=%.1f C, Relay=%s, Fault=%s...\n", 
+                deviceState.viewersActive ? "5s Fast Mode" : "30s Power-Save Mode",
+                temperatureC, deviceState.relayState ? "ON" : "OFF",
+                deviceState.hasFault ? "E-04" : "None");
 
-  Serial.printf("📡 [5-Min Update] Sending Telemetry: Temp=%.1f C, Relay=%s...\n", temperatureC, relayState ? "ON" : "OFF");
-
-  int httpCode = http.POST(jsonBody);
+  int httpCode = http.POST(jsonPayload);
   if (httpCode == 200) {
     String response = http.getString();
     Serial.printf("✅ Telemetry Ingest Response: %s\n", response.c_str());
 
-    // Parse executed commands returned in the array
-    DynamicJsonDocument respDoc(1024);
-    DeserializationError error = deserializeJson(respDoc, response);
-    if (!error && respDoc.is<JsonArray>()) {
-      JsonArray commands = respDoc.as<JsonArray>();
-      for (JsonObject cmd : commands) {
-        const char* target = cmd["target"];
-        bool val = cmd["value"] | true;
-        Serial.printf("⚡ Command Executed -> Target: %s, Value: %s\n", target, val ? "ON" : "OFF");
-        if (String(target) == "pump_relay") {
-          relayState = val;
-          digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);
-        }
-      }
-    }
+    // Decode and apply executed commands returned from Marveluzz Hub
+    TelemetryLogic::parseIngestResponse(response, deviceState, applyRelayHardwareState);
   } else {
     Serial.printf("❌ Telemetry Ingest Error %d: %s\n", httpCode, http.getString().c_str());
   }
@@ -151,6 +125,7 @@ void sendTelemetryAndPollCommands() {
 void setup() {
   Serial.begin(115200);
   pinMode(RELAY_PIN, OUTPUT);
+  pinMode(EMERGENCY_BTN_PIN, INPUT_PULLUP);
   digitalWrite(RELAY_PIN, LOW);
 
   Serial.println("\n🚀 Booting ESP32 Marveluzz Field Node...");
@@ -161,6 +136,7 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\n📶 WiFi Connected. IP: " + WiFi.localIP().toString());
+  deviceState.connected = true;
 
   registerUILayout();
   sendTelemetryAndPollCommands();
@@ -169,7 +145,9 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
-  if (now - lastUpdateMs >= UPDATE_INTERVAL_MS) {
+  unsigned long interval = TelemetryLogic::getStreamIntervalMs(deviceState.viewersActive);
+
+  if (now - lastUpdateMs >= interval) {
     lastUpdateMs = now;
     sendTelemetryAndPollCommands();
   }

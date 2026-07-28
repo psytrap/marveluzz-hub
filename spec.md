@@ -329,52 +329,7 @@ erDiagram
 
 ---
 
-## 4. Step-by-Step Feature Migration Plan (Every-Panel -> Marveluzz Hub)
-
-### Phase 1: Database & RPC Enhancements (`supabase_schema.sql`) — [COMPLETE]
-- [x] **Step 1.1: Core Tables Setup**: Implement `devices`, `ui_definitions`, `telemetry_latest`, `telemetry_history`, and `device_commands`.
-- [x] **Step 1.2: Add Power-Saving Viewer Presence**: Add `viewers_active` (boolean) & `viewers_last_seen` columns to `devices` table. Update `ingest_telemetry` RPC to return `viewers_active` so IoT nodes can pause high-frequency sampling when no UI tabs are open.
-- [x] **Step 1.3: Control Lease Atomic RPCs**: Implement `acquire_control_lease(p_device_id, p_session_id)` and `release_control_lease(p_device_id, p_session_id)` stored procedures to enforce single-controller lock semantics in Postgres.
-- [x] **Step 1.4: Storage Stats & Data Cleanup RPC**: Implement `wipe_device_data(p_device_id)` RPC function to delete telemetry history, layout schemas, and commands for storage maintenance.
-- [x] **Step 1.5: History Retention TTL Management**: Add `history_ttl_days` column (default 7 days) and `purge_expired_telemetry()` PostgreSQL function to clean up telemetry logs older than `history_ttl_days`.
-
-### Phase 2: Edge Server & REST / SSE Ingest (`src/main.ts`) — [COMPLETE]
-- [x] **Step 2.1: Telemetry & Layout Ingest APIs**: Implement `/api/device/telemetry` and `/api/device/ui_definition`.
-- [x] **Step 2.2: Device Directory API**: Implement `/api/devices` GET list endpoint.
-- [x] **Step 2.3: Device Storage Stats & Settings APIs**: Implement `/api/devices/stats` GET and `/api/devices/delete` POST endpoints for storage footprint metrics and wiping device data.
-- [x] **Step 2.4: Memory & Health Diagnostics API**: Implement `/api/debug/memory` endpoint returning RSS memory stats, isolate uptime, active SSE streams, and database mode.
-- [x] **Step 2.5: Server-Sent Events (SSE) Endpoint**: Implement `/api/device/events` for instant command push streaming to IoT microcontrollers.
-
-### Phase 3: Frontend Dashboard UI Parity (`public/app.js` & `public/index.html`) — [COMPLETE]
-- [x] **Step 3.1: Glassmorphism Theme & Layout**: Apply Google Font *Outfit* and glass dark-mode tokens.
-- [x] **Step 3.2: Complete 7-State Diagnostic Status Machine**:
-  - Implement full status badge state transitions: `disconnected` (gray pulse), `detached` (red), `initializing` (orange pulse), `stale` (pink pulse), `fault` (red pulse), `live` (amber), `control` (green).
-  - Implement keepalive timeout detector for `stale` status when server/realtime pings fail.
-- [x] **Step 3.3: Complete 8-Widget Renderer Engine**:
-  - Support `number`, `range` / `slider`, `button` (edge/click), `text` / `text_view`, `indicator` / `badge`, `img` (webcam viewer), `divider`, `chart` (time-series plot).
-- [x] **Step 3.4: Control Lease Toggle UI**: Add `Acquire Control` / `Release Control` header buttons and input lock overlays (`disabled-overlay`) for view-only users.
-- [x] **Step 3.5: Storage Stats & Wipe Modal UI**: Build `/devices/stats` view with secret key display and confirmation modal for wiping device storage.
-
-### Phase 4: IoT Node Simulator & Firmware Parity (`examples/device_emulator.ts`) — [COMPLETE]
-- [x] **Step 4.1: Interactive Web Panel Emulator**: Implement standalone web panel running on Port 8001.
-- [x] **Step 4.2: Hardware Fault & Power-Saving Feedback**:
-  - Implement `viewers_active` / `viewers_inactive` handling to adjust auto-stream frequency (5s fast stream vs 30s power-saving mode).
-  - Test hardware fault code (`E-04`) simulation and emergency button edge triggers.
-
-### Phase 5: Verification & Quality Assurance
-- [x] **Step 5.1: Deno Integration Test Suite**: Implement `tests/integration_test.ts` and `tests/supabase_mock.ts`.
-- [ ] **Step 5.2: End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
-- [ ] **Step 5.3: Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
-
-### Phase 6: One-Time Authentication & Device Pairing Workflow — [TODO]
-- [ ] **Step 6.1: One-Time Authentication & Zero-Dashboard PIN Pairing**:
-  - Implement 6-digit PIN one-time pairing endpoint (`POST /api/device/pair`) for Zero-Dashboard Plug & Play onboarding.
-  - Implement Hub UI "+ Add New Device" modal with 6-digit PIN generator & QR code renderer.
-  - Implement ESP32 captive portal auto-discovery handshake to receive and store `deviceId` and `deviceKey` permanently in NVS Flash memory upon valid PIN authentication.
-
----
-
-## 5. Deployment Synchronization & Contract Security (Deno Deploy <-> Supabase)
+## 4. Deployment Synchronization & Contract Security (Deno Deploy <-> Supabase)
 
 Synchronization and API contract integrity between Deno Deploy and Supabase are guaranteed through 5 architectural mechanisms:
 
@@ -386,7 +341,7 @@ Synchronization and API contract integrity between Deno Deploy and Supabase are 
 
 ---
 
-## 6. Detailed Integration & Staging Environment Architecture
+## 5. Detailed Integration & Staging Environment Architecture
 
 The Staging Environment provides an isolated, production-identical testing sandbox combining a dedicated **Supabase Staging Project** and a **Deno Deploy Staging Project**.
 
@@ -416,7 +371,7 @@ The Staging Environment provides an isolated, production-identical testing sandb
 
 ---
 
-## 7. Direct IoT-to-Supabase Connectivity Solutions (Bypassing Edge Servers)
+## 6. Direct IoT-to-Supabase Connectivity Solutions (Bypassing Edge Servers)
 
 IoT devices can connect **directly to Supabase** using both stateless or permanent connection protocols:
 
@@ -447,3 +402,24 @@ wss://<project-id>.supabase.co/realtime/v1/websocket?apikey=<SUPABASE_ANON_KEY>&
 
 ### Solution C: Server-Sent Events (SSE Stream Endpoint `/api/device/events`)
 IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to listen for real-time command events, while sending telemetry updates via standard HTTP POST calls.
+
+---
+
+## 7. Future Enhancements & TODO Roadmap
+
+### Verification & Quality Assurance
+- [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
+- [ ] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
+- [ ] **Formal Staging Branching Strategy**: Establish a formal Git staging branching strategy (`staging` vs `main` release branches, separate Deno Deploy preview environments, and isolated Supabase staging database instances).
+
+### One-Time Authentication & Device Pairing Workflow
+- [ ] **Zero-Dashboard PIN Pairing**:
+  - Implement 6-digit PIN one-time pairing endpoint (`POST /api/device/pair`) for Zero-Dashboard Plug & Play onboarding.
+  - Implement Hub UI "+ Add New Device" modal with 6-digit PIN generator & QR code renderer.
+  - Implement ESP32 captive portal auto-discovery handshake to receive and store `deviceId` and `deviceKey` permanently in NVS Flash memory upon valid PIN authentication.
+
+### Security, Analytics & Ecosystem Integrations
+- [ ] **GitHub OAuth & User Access Control**: Implement optional GitHub OAuth authentication (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ALLOWED_GITHUB_USERS`, `DISABLE_AUTH`) to protect dashboard access.
+- [ ] **Server-Side Telemetry Downsampling & Aggregation**: Implement configurable telemetry logging downsampling policy (1m/5m windows) to store consolidated `min`, `max`, `avg`, and `latest` metric data points in database history.
+- [ ] **Home Assistant & MQTT Integration**: Expose registered device entities dynamically to Home Assistant via MQTT auto-discovery and WebSocket/HTTP bridges.
+- [ ] **Public Read-Only Dashboard Sharing**: Allow device owners to share public, read-only panel links with unauthenticated users while strictly locking exclusive control lease write privileges.
