@@ -163,7 +163,9 @@ Deno.test("Staging Suite: Endpoint Verification & Integration", async (t) => {
     const telemetryJson = await telemetryRes.json();
     assertEquals(telemetryJson.success, true);
     assert(Array.isArray(telemetryJson.commands));
-    assert(telemetryJson.commands.some((c: any) => c.target === "staging_fan"));
+
+    const cmdList = (telemetryJson.commands || []).flatMap((c: any) => c.commands ? c.commands : [c]);
+    assert(cmdList.some((c: any) => c.target === "staging_fan"));
   });
 
   await t.step("Device directory listing endpoint", async () => {

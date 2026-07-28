@@ -127,10 +127,12 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       const telemetryJson = await telemetryRes.json();
       assertEquals(telemetryJson.success, true);
       assert(Array.isArray(telemetryJson.commands));
-      assertEquals(telemetryJson.commands.length, 1);
-      assertEquals(telemetryJson.commands[0].target, "fan_switch");
-      assertEquals(telemetryJson.commands[0].action, "toggle");
-      assertEquals(telemetryJson.commands[0].value, true);
+
+      const cmdList = (telemetryJson.commands || []).flatMap((c: any) => c.commands ? c.commands : [c]);
+      assertEquals(cmdList.length, 1);
+      assertEquals(cmdList[0].target, "fan_switch");
+      assertEquals(cmdList[0].action, "toggle");
+      assertEquals(cmdList[0].value, true);
     });
 
     await t.step("Logout routine invalidates active session and clears cookie", async () => {
