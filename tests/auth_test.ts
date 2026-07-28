@@ -1,5 +1,5 @@
 // Marveluzz Hub - Authentication Integration & Mock OAuth Test Suite
-import { assertEquals, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assertEquals, assertNotEquals, assert } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { fromFileUrl, join } from "https://deno.land/std@0.208.0/path/mod.ts";
 
 const mainTsPath = join(fromFileUrl(import.meta.url), "../../src/main.ts");
@@ -88,6 +88,49 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       const configJson = await configRes.json();
       assertEquals(configJson.disableAuth, false);
       assertEquals(configJson.mockAuth, true);
+    });
+
+    await t.step("UI command dispatch: POST /api/device/command queues command and IoT telemetry ingest receives it", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const deviceKey = "secret_passcode_123";
+
+      // 1. Web UI sends command to device
+      const cmdRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cookie": `marveluzz_session=${activeSessionId}`
+        },
+        body: JSON.stringify({
+          deviceId,
+          target: "fan_switch",
+          action: "toggle",
+          value: true
+        })
+      });
+      assertEquals(cmdRes.status, 200);
+      const cmdJson = await cmdRes.json();
+      assertEquals(cmdJson.success, true);
+      assertNotEquals(cmdJson.commandId, undefined);
+
+      // 2. IoT device sends telemetry and receives queued command in response
+      const telemetryRes = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId,
+          deviceKey,
+          data: { temperature: 24.5 }
+        })
+      });
+      assertEquals(telemetryRes.status, 200);
+      const telemetryJson = await telemetryRes.json();
+      assertEquals(telemetryJson.success, true);
+      assert(Array.isArray(telemetryJson.commands));
+      assertEquals(telemetryJson.commands.length, 1);
+      assertEquals(telemetryJson.commands[0].target, "fan_switch");
+      assertEquals(telemetryJson.commands[0].action, "toggle");
+      assertEquals(telemetryJson.commands[0].value, true);
     });
 
     await t.step("Logout routine invalidates active session and clears cookie", async () => {

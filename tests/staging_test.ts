@@ -129,6 +129,43 @@ Deno.test("Staging Suite: Endpoint Verification & Integration", async (t) => {
     assert(Array.isArray(json.commands));
   });
 
+  await t.step("UI command dispatch endpoint queues command and IoT telemetry receives it", async () => {
+    const headers = await getStagingAuthHeaders();
+
+    // 1. UI sends command via POST /api/device/command
+    const cmdRes = await fetch(`${STAGING_URL}/api/device/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({
+        deviceId: TEST_DEVICE_ID,
+        target: "staging_fan",
+        action: "set_speed",
+        value: 75
+      })
+    });
+
+    assertEquals(cmdRes.status, 200);
+    const cmdJson = await cmdRes.json();
+    assertEquals(cmdJson.success, true);
+
+    // 2. IoT Device ingests telemetry and retrieves the queued command
+    const telemetryRes = await fetch(`${STAGING_URL}/api/device/telemetry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: TEST_DEVICE_ID,
+        deviceKey: TEST_DEVICE_KEY,
+        data: { temperature: 24.0 }
+      })
+    });
+
+    assertEquals(telemetryRes.status, 200);
+    const telemetryJson = await telemetryRes.json();
+    assertEquals(telemetryJson.success, true);
+    assert(Array.isArray(telemetryJson.commands));
+    assert(telemetryJson.commands.some((c: any) => c.target === "staging_fan"));
+  });
+
   await t.step("Device directory listing endpoint", async () => {
     const headers = await getStagingAuthHeaders();
     const res = await fetch(`${STAGING_URL}/api/devices`, { headers });
