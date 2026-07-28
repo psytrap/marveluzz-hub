@@ -280,3 +280,9 @@ CREATE POLICY "Public Read UI Definitions" ON public.ui_definitions FOR SELECT U
 CREATE POLICY "Public Read Telemetry Latest" ON public.telemetry_latest FOR SELECT USING (true);
 CREATE POLICY "Public Read Telemetry History" ON public.telemetry_history FOR SELECT USING (true);
 CREATE POLICY "Public Read Device Commands" ON public.device_commands FOR SELECT USING (true);
+
+-- Grant Public & Service Role Access for Schema Version Compatibility RPC
+GRANT EXECUTE ON FUNCTION public.schema_version() TO anon, authenticated, service_role;
+
+-- Force PostgREST Schema Cache Reload
+NOTIFY pgrst, 'reload schema';
