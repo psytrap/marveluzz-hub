@@ -503,3 +503,54 @@ main {
 .directory-summary strong {
   color: var(--accent-color);
 }
+
+/* Footer & Version Badge Component */
+.footer-bar {
+  padding: 16px 40px;
+  border-top: 1px solid var(--border-color);
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(11, 15, 25, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.version-info strong {
+  color: var(--text-primary);
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.version-separator {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.self-test-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.status-dot-mini {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success-color);
+  box-shadow: 0 0 6px var(--success-color);
+}
+
+.self-test-status.degraded .status-dot-mini {
+  background: var(--danger-color);
+  box-shadow: 0 0 6px var(--danger-color);
+}
+

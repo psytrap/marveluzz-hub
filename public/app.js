@@ -37,9 +37,38 @@ async function initApp() {
       loadInitialData();
       startKeepaliveStaleDetector();
     }
+
+    loadVersionAndSelfTest();
   } catch (e) {
     console.error("Failed to initialize app:", e);
     updateStatusBadge("disconnected", "Server Offline");
+  }
+}
+
+async function loadVersionAndSelfTest() {
+  try {
+    const res = await fetch("/api/health/self-test");
+    const data = await res.json();
+
+    const uiEl = document.getElementById("ui-version-badge");
+    const dbEl = document.getElementById("db-version-badge");
+    const testBadge = document.getElementById("self-test-badge");
+    const testText = document.getElementById("self-test-text");
+
+    if (uiEl && data.appVersion) uiEl.textContent = `v${data.appVersion}`;
+    if (dbEl && data.actualSchemaVersion) dbEl.textContent = `v${data.actualSchemaVersion}`;
+
+    if (testBadge && testText) {
+      if (data.contractCompatible) {
+        testBadge.className = "self-test-status ok";
+        testText.textContent = "Contract OK";
+      } else {
+        testBadge.className = "self-test-status degraded";
+        testText.textContent = "Version Mismatch";
+      }
+    }
+  } catch (e) {
+    console.error("Failed to fetch self-test status:", e);
   }
 }
 
