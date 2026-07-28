@@ -321,15 +321,23 @@ const HTML_CONTENT = `<!DOCTYPE html>
         </div>
 
         <div class="form-group">
+          <label>Power-Saving & Viewer Feedback Mode</label>
+          <div class="knob-row">
+            <span>Viewers Active (5s Fast Stream)</span>
+            <input type="checkbox" id="knob-viewers" style="width:20px; height:20px; cursor:pointer;" checked onchange="toggleViewersActive(this.checked)">
+          </div>
+        </div>
+
+        <div class="form-group">
           <label>Constant Sensor Updates</label>
           <div class="knob-row">
-            <span>Auto-Stream Telemetry (30s)</span>
+            <span id="stream-rate-label">Auto-Stream Telemetry (5s)</span>
             <input type="checkbox" id="knob-autostream" style="width:20px; height:20px; cursor:pointer;" checked onchange="toggleAutoStream(this.checked)">
           </div>
         </div>
 
         <div class="form-group" style="margin-top:10px;">
-          <button id="fault-btn" class="btn-fault" onclick="toggleFault()">Simulate Hardware Fault</button>
+          <button id="fault-btn" class="btn-fault" onclick="toggleFault()">🚨 Trigger Hardware Fault Code (E-04)</button>
         </div>
       </div>
     </div>
@@ -355,10 +363,15 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let fanVal = false;
     let hasFault = false;
     let autoStreamActive = true;
+    let viewersActive = true;
+
+    function getStreamIntervalMs() {
+      return viewersActive ? 5000 : 30000;
+    }
 
     function getCleanHubUrl() {
       const rawUrl = document.getElementById("hub-url").value.trim();
-      return rawUrl.replace(/\\/+$/, "");
+      return rawUrl.replace(/\/+$/, "");
     }
 
     function isDirectSupabaseMode() {
@@ -401,17 +414,30 @@ const HTML_CONTENT = `<!DOCTYPE html>
       sendTelemetryPacket();
     }
 
+    function toggleViewersActive(checked) {
+      viewersActive = !!checked;
+      const intervalSec = getStreamIntervalMs() / 1000;
+      document.getElementById("stream-rate-label").innerText = \`Auto-Stream Telemetry (\${intervalSec}s)\`;
+      log(\`⚡ Viewer feedback state update: Viewers \${viewersActive ? 'ACTIVE (Fast 5s stream)' : 'INACTIVE (Power-Saving 30s stream)'}\`, "System");
+      
+      if (isConnected && autoStreamActive) {
+        if (telemetryTimer) clearInterval(telemetryTimer);
+        telemetryTimer = setInterval(sendTelemetryPacket, getStreamIntervalMs());
+      }
+      sendTelemetryPacket();
+    }
+
     function toggleFault() {
       hasFault = !hasFault;
       const btn = document.getElementById("fault-btn");
       if (hasFault) {
         btn.classList.add("active");
-        btn.innerText = "Clear Hardware Fault";
-        log("Simulated Hardware Fault triggered!", "Error");
+        btn.innerText = "🚨 Clear Hardware Fault Code (E-04)";
+        log("🚨 EMERGENCY HARDWARE FAULT (E-04) TRIGGERED! Flagging critical telemetry payload.", "Error");
       } else {
         btn.classList.remove("active");
-        btn.innerText = "Simulate Hardware Fault";
-        log("Hardware Fault cleared.", "System");
+        btn.innerText = "🚨 Trigger Hardware Fault Code (E-04)";
+        log("Hardware Fault Code E-04 cleared. Normal operation restored.", "System");
       }
       sendTelemetryPacket();
     }
@@ -422,7 +448,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       if (isConnected) {
         if (autoStreamActive) {
           if (telemetryTimer) clearInterval(telemetryTimer);
-          telemetryTimer = setInterval(sendTelemetryPacket, 30000);
+          telemetryTimer = setInterval(sendTelemetryPacket, getStreamIntervalMs());
           log("Constant sensor updates started.", "System");
         } else {
           if (telemetryTimer) {
@@ -507,7 +533,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
           // Start Telemetry Ingest Loop
           sendTelemetryPacket();
           if (autoStreamActive) {
-            telemetryTimer = setInterval(sendTelemetryPacket, 30000);
+            telemetryTimer = setInterval(sendTelemetryPacket, getStreamIntervalMs());
           }
         } else {
           log("❌ Layout Registration Failed: " + (layoutData.error || "Unauthorized"), "Error");
@@ -548,7 +574,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
         temperature: Number(tempVal.toFixed(1)),
         fan_toggle: fanVal,
         uptime: \`\${uptimeSec}s\`,
-        status_text: hasFault ? "Fault Code E-04" : "Running Normally"
+        viewers_active: viewersActive,
+        power_save_mode: !viewersActive,
+        status_text: hasFault ? "CRITICAL: Fault Code E-04" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
+        ...(hasFault ? { fault_code: "E-04", emergency_stop: true } : {})
       };
 
       try {
@@ -579,7 +608,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         const commands = isDirect ? data : (data.commands || []);
 
         if (isSuccess) {
-          log(\`Telemetry Direct Ingest -> Temp: \${tempVal.toFixed(1)}°C, Fan: \${fanVal ? 'ON' : 'OFF'}, Uptime: \${uptimeSec}s\`, "Info");
+          log(\`Telemetry Ingest (\${viewersActive ? '5s Fast' : '30s Power-Save'}) -> Temp: \${tempVal.toFixed(1)}°C, Fan: \${fanVal ? 'ON' : 'OFF'}, Fault: \${hasFault ? 'E-04' : 'None'}\`, "Info");
 
           if (commands && commands.length > 0) {
             commands.forEach(cmd => {
@@ -587,6 +616,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
               if (cmd.target === "fan_toggle") {
                 fanVal = !fanVal;
                 document.getElementById("knob-fan").checked = fanVal;
+              } else if (cmd.target === "viewers_active") {
+                toggleViewersActive(!!cmd.value);
+                document.getElementById("knob-viewers").checked = viewersActive;
               }
             });
           }

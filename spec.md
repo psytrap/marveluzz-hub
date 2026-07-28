@@ -355,15 +355,16 @@ erDiagram
 - [x] **Step 3.4: Control Lease Toggle UI**: Add `Acquire Control` / `Release Control` header buttons and input lock overlays (`disabled-overlay`) for view-only users.
 - [x] **Step 3.5: Storage Stats & Wipe Modal UI**: Build `/devices/stats` view with secret key display and confirmation modal for wiping device storage.
 
-### Phase 4: IoT Node Simulator & Firmware Parity (`examples/device_emulator.ts`)
+### Phase 4: IoT Node Simulator & Firmware Parity (`examples/device_emulator.ts`) — [COMPLETE]
 - [x] **Step 4.1: Interactive Web Panel Emulator**: Implement standalone web panel running on Port 8001.
-- [ ] **Step 4.2: Hardware Fault & Power-Saving Feedback**:
-  - Implement `viewers_active` / `viewers_inactive` handling to adjust auto-stream frequency.
+- [x] **Step 4.2: Hardware Fault & Power-Saving Feedback**:
+  - Implement `viewers_active` / `viewers_inactive` handling to adjust auto-stream frequency (5s fast stream vs 30s power-saving mode).
   - Test hardware fault code (`E-04`) simulation and emergency button edge triggers.
 
 ### Phase 5: Verification & Quality Assurance
 - [x] **Step 5.1: Deno Integration Test Suite**: Implement `tests/integration_test.ts` and `tests/supabase_mock.ts`.
 - [ ] **Step 5.2: End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
+- [ ] **Step 5.3: Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
 
 ### Phase 6: One-Time Authentication & Device Pairing Workflow — [TODO]
 - [ ] **Step 6.1: One-Time Authentication & Zero-Dashboard PIN Pairing**:
