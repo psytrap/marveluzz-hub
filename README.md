@@ -102,7 +102,7 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 ## 🛠️ Production & Staging Environment Setup Guide
 
 ### 🚀 Live Staging Deployment URLs
-- **Live Staging Dashboard**: `https://marveluzz-hub-staging.psytrap.deno.net/`
+- **Live Staging Dashboard**: Set `STAGING_URL` in `staging.env` (see `staging.env.example`)
 - **Live Staging Database**: `https://qmketwlyeexumcxboagc.supabase.co`
 
 ---
@@ -132,8 +132,8 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 # 1. Run local integration test suite (11/11 passing)
 deno task test
 
-# 2. Run live staging integration test suite (5/5 passing)
-STAGING_URL="https://marveluzz-hub-staging.psytrap.deno.net" deno task test:staging
+# 2. Run live staging integration test suite (read from staging.env)
+deno task test:staging
 
 # 3. Start local edge server
 deno task dev

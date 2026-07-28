@@ -1,0 +1,17 @@
+# Environment Variables & Local Secrets
+staging.env
+*.env
+!staging.env.example
+.env
+.env.local
+.env.*.local
+
+# OS & IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Deno & Node Temp Artifacts
+.deno/
+node_modules/

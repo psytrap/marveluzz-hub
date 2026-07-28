@@ -3,7 +3,24 @@
 
 import { assertEquals, assert } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
-const STAGING_URL = Deno.env.get("STAGING_URL") || "https://marveluzz-hub-staging.psytrap.deno.net";
+function getStagingUrl(): string {
+  if (Deno.env.get("STAGING_URL")) return Deno.env.get("STAGING_URL")!;
+  const envFiles = ["staging.env", ".env.local", ".env"];
+  for (const file of envFiles) {
+    try {
+      const text = Deno.readTextFileSync(file);
+      for (const line of text.split("\n")) {
+        const match = line.match(/^\s*STAGING_URL\s*=\s*(.+)$/);
+        if (match) return match[1].trim().replace(/^["']|["']$/g, "");
+      }
+    } catch {
+      // file not found, try next
+    }
+  }
+  return "http://localhost:8000";
+}
+
+const STAGING_URL = getStagingUrl();
 const TEST_DEVICE_ID = "99999999-9999-4999-8999-999999999999";
 const TEST_DEVICE_KEY = "staging_secret_key_999";
 
