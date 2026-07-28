@@ -6,6 +6,7 @@
     "check:parity": "deno test --allow-net --allow-env --allow-read tests/staging_test.ts",
     "emulator": "deno run --allow-net --allow-env --allow-read examples/device_emulator.ts",
     "db:push": "supabase db push",
+    "uprev": "deno run --allow-read --allow-write scripts/uprev.ts",
     "deploy": "deployctl deploy --project=marveluzz-hub --entrypoint=src/main.ts",
     "deploy:all": "deno task test && deno task db:push && deno task deploy"
   },

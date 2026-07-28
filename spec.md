@@ -409,7 +409,7 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 
 ### Verification & Quality Assurance
 - [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
-- [ ] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
+- [x] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
 - [ ] **Formal Staging Branching Strategy**: Establish a formal Git staging branching strategy (`staging` vs `main` release branches, separate Deno Deploy preview environments, and isolated Supabase staging database instances).
 
 ### One-Time Authentication & Device Pairing Workflow
