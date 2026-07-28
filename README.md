@@ -126,7 +126,7 @@ Supabase recommends configuring these 4 environment variables for edge & server 
 
 ---
 
-### Step 3: CLI Commands & Test Runner
+### Step 3: Commands & Test Runner
 
 ```bash
 # 1. Run local integration test suite (11/11 passing)
