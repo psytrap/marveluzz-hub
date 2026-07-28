@@ -2,8 +2,8 @@
 // Supports both Direct-to-Supabase Cloud Ingest & Edge Gateway Ingest
 
 const PORT = Number(Deno.env.get("EMULATOR_PORT") || Deno.env.get("PORT")) || 8001;
-const DEFAULT_HUB_URL = Deno.env.get("EMULATOR_URL") || Deno.env.get("STAGING_URL") || Deno.env.get("HUB_URL") || "http://localhost:8000";
-const DEFAULT_ANON_KEY = Deno.env.get("EMULATOR_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+const DEFAULT_HUB_URL = Deno.env.get("EMULATOR_URL") || "https://qmketwlyeexumcxboagc.supabase.co";
+const DEFAULT_ANON_KEY = Deno.env.get("EMULATOR_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "sb_publishable_Tp40f-fYpbtF1_4-6UdWmw_g5AJMM2d";
 const DEFAULT_DEVICE_ID = Deno.env.get("EMULATOR_DEVICE_ID") || Deno.env.get("TEST_DEVICE_ID") || "32323232-3232-4232-8232-28c13340c86c";
 const DEFAULT_DEVICE_KEY = Deno.env.get("EMULATOR_DEVICE_KEY") || Deno.env.get("TEST_DEVICE_KEY") || "secret_passcode_123";
 
@@ -369,12 +369,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let viewersActive = true;
 
     function getStreamIntervalMs() {
-      return viewersActive ? 5000 : 30000;
+      return viewersActive ? 5000 : 10000;
     }
 
     function getCleanHubUrl() {
       const rawUrl = document.getElementById("hub-url").value.trim();
-      return rawUrl.replace(/\/+$/, "");
+      return rawUrl.replace(new RegExp("/+$"), "");
     }
 
     function isDirectSupabaseMode() {
@@ -393,17 +393,24 @@ const HTML_CONTENT = `<!DOCTYPE html>
       if (category === "Error") categoryColor = "#ef4444";
       if (category === "System") categoryColor = "#9ca3af";
 
-      line.innerHTML = \`<span class="log-time">[\${time}]</span> <span style="color:\${categoryColor}; font-weight:500;">[\${category}]</span> \${message}\`;
+      line.innerHTML = '<span class="log-time">[' + time + ']</span> <span style="color:' + categoryColor + '; font-weight:500;">[' + category + ']</span> ' + message;
       term.appendChild(line);
       term.scrollTop = term.scrollHeight;
     }
 
     function clearLogs() {
-      document.getElementById("terminal").innerHTML = "";
-      log("Logs cleared.", "System");
+      console.log("[BTN] clearLogs clicked");
+      const term = document.getElementById("terminal");
+      if (term) {
+        term.innerHTML = "";
+        log("Logs cleared.", "System");
+      } else {
+        console.error("[BTN] clearLogs: #terminal element not found!");
+      }
     }
 
     function updateKnobVal(type, val) {
+      console.log("[BTN] updateKnobVal type=", type, "val=", val);
       if (type === 'temp') {
         tempVal = Number(val);
         document.getElementById("val-temp").innerText = tempVal.toFixed(1) + "°C";
@@ -412,16 +419,18 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     function updateFanVal(checked) {
+      console.log("[BTN] updateFanVal clicked, checked=", checked);
       fanVal = !!checked;
-      log(\`Desk Fan Switch manually set to: \${fanVal ? 'ON' : 'OFF'}\`, "Info");
+      log("Desk Fan Switch manually set to: " + (fanVal ? "ON" : "OFF"), "Info");
       sendTelemetryPacket();
     }
 
     function toggleViewersActive(checked) {
+      console.log("[BTN] toggleViewersActive clicked, checked=", checked);
       viewersActive = !!checked;
       const intervalSec = getStreamIntervalMs() / 1000;
-      document.getElementById("stream-rate-label").innerText = \`Auto-Stream Telemetry (\${intervalSec}s)\`;
-      log(\`⚡ Viewer feedback state update: Viewers \${viewersActive ? 'ACTIVE (Fast 5s stream)' : 'INACTIVE (Power-Saving 30s stream)'}\`, "System");
+      document.getElementById("stream-rate-label").innerText = "Auto-Stream Telemetry (" + intervalSec + "s)";
+      log("⚡ Viewer feedback state update: Viewers " + (viewersActive ? "ACTIVE (Fast 5s stream)" : "INACTIVE (Power-Saving 10s stream)"), "System");
       
       if (isConnected && autoStreamActive) {
         if (telemetryTimer) clearInterval(telemetryTimer);
@@ -431,6 +440,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     function toggleFault() {
+      console.log("[BTN] toggleFault clicked, hasFault=", hasFault);
       hasFault = !hasFault;
       const btn = document.getElementById("fault-btn");
       if (hasFault) {
@@ -446,6 +456,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     function toggleAutoStream(checked) {
+      console.log("[BTN] toggleAutoStream clicked, checked=", checked);
       autoStreamActive = !!checked;
       log("Auto-Stream Telemetry set to: " + autoStreamActive, "System");
       if (isConnected) {
@@ -464,6 +475,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     function toggleConnection() {
+      console.log("[BTN] toggleConnection clicked, isConnected=", isConnected);
       if (isConnected) {
         disconnect();
       } else {
@@ -482,8 +494,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
       const isDirect = isDirectSupabaseMode();
       if (isDirect && !anonKey) {
-        log("⚠️ Direct Supabase Mode requires pasting your SUPABASE_ANON_KEY (Publishable Key) into the amber box!", "Error");
-        return;
+        log("⚠️ Direct Supabase Cloud Mode requires a valid SUPABASE_ANON_KEY in the amber box!", "Error");
       }
 
       log("Connecting target: " + hubUrl + (isDirect ? " (Direct Supabase Cloud Mode)" : " (Edge Server Mode)"), "System");
@@ -498,6 +509,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
         ]
       };
 
+      log("📋 Layout Schema -> " + JSON.stringify(layoutDef), "System");
+
       try {
         let endpoint = hubUrl + "/api/device/ui_definition";
         let headers = { "Content-Type": "application/json" };
@@ -509,6 +522,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
           headers["Authorization"] = "Bearer " + anonKey;
           bodyPayload = { p_device_id: deviceId, p_device_key: deviceKey, p_layout_def: layoutDef };
         }
+
+        log("📡 Sending Layout Registration Request -> POST " + endpoint, "System");
 
         const layoutRes = await fetch(endpoint, {
           method: "POST",
@@ -526,7 +541,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         const isSuccess = isDirect ? (layoutData === true || layoutData.success === true) : layoutData.success;
 
         if (isSuccess) {
-          log("✅ UI Layout Schema registered directly in Supabase.", "System");
+          log("✅ UI Layout Schema registered successfully (HTTP " + layoutRes.status + ").", "System");
           isConnected = true;
           connectBtn.innerText = "Disconnect";
           connectBtn.className = "btn btn-disconnect";
@@ -560,8 +575,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
       connectBtn.className = "btn";
       badge.className = "status-badge disconnected";
       statusText.innerText = "Disconnected";
-      log("Disconnected from Target.", "System");
+      log("🔴 Connection with UI / Target Gateway closed or lost.", "Error");
     }
+
 
     async function sendTelemetryPacket() {
       if (!isConnected) return;
@@ -602,20 +618,27 @@ const HTML_CONTENT = `<!DOCTYPE html>
         });
 
         if (!res.ok) {
-          log("❌ Telemetry HTTP Error " + res.status, "Error");
+          if (res.status === 401 && isDirect) {
+            log("🔴 Connection Lost: Direct Supabase Mode returned HTTP 401 Unauthorized (Invalid API Key).", "Error");
+          } else {
+            log("🔴 Connection Lost: Telemetry request rejected with HTTP Error " + res.status, "Error");
+          }
           return;
         }
 
         const data = await res.json();
+        console.log("[TELEMETRY] raw response:", JSON.stringify(data));
         const isSuccess = isDirect ? Array.isArray(data) : data.success;
         const rawCommands = isDirect ? (Array.isArray(data) ? data : []) : (data.commands || []);
         const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
+        console.log("[TELEMETRY] isDirect=" + isDirect + " isSuccess=" + isSuccess + " commandList=" + JSON.stringify(commandList));
 
         if (isSuccess) {
           log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, Fan: " + (fanVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
 
           if (commandList && commandList.length > 0) {
             commandList.forEach(cmd => {
+              console.log("[CMD] processing:", JSON.stringify(cmd));
               if (!cmd || !cmd.target || cmd.target === "undefined") return;
               log("Incoming Command Executed -> Target: '" + cmd.target + "', Action: " + cmd.action + ", Value: " + JSON.stringify(cmd.value), "Command");
 
@@ -662,5 +685,18 @@ async function handler(req: Request): Promise<Response> {
   return new Response("Not Found", { status: 404 });
 }
 
-console.log(`🤖 Marveluzz IoT Device Emulator Panel starting on http://localhost:${PORT}...`);
+const STARTED_AT = new Date().toLocaleString("en-GB", { hour12: false });
+console.log(`
+=======================================================
+🤖 MARVELUZZ IOT DEVICE EMULATOR (v1.0.13)
+⏱  STARTED AT          : ${STARTED_AT}
+=======================================================
+🌐 DEFAULT TARGET URL : ${DEFAULT_HUB_URL}
+🔑 SUPABASE ANON KEY  : ${DEFAULT_ANON_KEY ? (DEFAULT_ANON_KEY.substring(0, 20) + "...") : "NOT CONFIGURED"}
+🆔 DEVICE ID (UUID)   : ${DEFAULT_DEVICE_ID}
+🔐 DEVICE SECRET KEY  : ${DEFAULT_DEVICE_KEY}
+⚡ EMULATOR PORT      : ${PORT}
+=======================================================
+Listening on http://localhost:${PORT}/
+`);
 Deno.serve({ port: PORT }, handler);

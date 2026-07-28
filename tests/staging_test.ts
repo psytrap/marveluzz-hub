@@ -4,13 +4,14 @@
 import { assertEquals, assert } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 function getStagingUrl(): string {
-  if (Deno.env.get("STAGING_URL")) return Deno.env.get("STAGING_URL")!;
+  if (Deno.env.get("DENO_STAGING_URL")) return Deno.env.get("DENO_STAGING_URL")!;
+  if (Deno.env.get("STAGING_URL")) return Deno.env.get("STAGING_URL")!; // legacy fallback
   const envFiles = ["staging.env", ".env.local", ".env"];
   for (const file of envFiles) {
     try {
       const text = Deno.readTextFileSync(file);
       for (const line of text.split("\n")) {
-        const match = line.match(/^\s*STAGING_URL\s*=\s*(.+)$/);
+        const match = line.match(/^\s*DENO_STAGING_URL\s*=\s*(.+)$/);
         if (match) return match[1].trim().replace(/^["']|["']$/g, "");
       }
     } catch {

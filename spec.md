@@ -502,6 +502,7 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 ## 7. Future Enhancements & TODO Roadmap
 
 ### UI & Design
+- [ ] **UI General Cleanup**: Polish overall Hub dashboard UI — review spacing, typography consistency, widget alignment, empty states, and loading skeletons. Audit all interactive elements for hover/focus states. Remove debug artifacts (excessive `console.log` statements, `[BTN]` debug labels) before production release.
 - [ ] **Smart Stale & Disconnection Detection**: Refactor simplistic client-side timer (`startKeepaliveStaleDetector`) into an adaptive heartbeat state machine. Calculate stale thresholds dynamically based on active telemetry stream intervals (10s default vs 5s fast viewer stream), network latency jitter, and server-side `last_seen` timestamp drift rather than fixed 12s hardcoded timeout.
 - [ ] **Device Storage Stats Page** (`/devices/stats?device_id=...`): Port the dedicated storage & diagnostics page from `Every-Panel`. Currently Marveluzz Hub exposes a raw "Wipe Data" `btn-delete` directly in the Device Directory row. Instead, replace it with a "Storage Stats" link (muted secondary style matching Every-Panel) that navigates to a full stats page containing:
   - **4 metric cards**: Total telemetry history records, estimated storage footprint (Bytes/KB/MB), retention policy (TTL), device secret key

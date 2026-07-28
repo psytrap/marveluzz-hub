@@ -36,6 +36,11 @@
         <span id="status-text" style="text-transform: capitalize;">Detached</span>
       </div>
 
+      <!-- Device UUID display -->
+      <div id="device-uuid-display" style="font-size:10px; color:var(--text-secondary); font-family:monospace; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:6px; padding:3px 8px; user-select:all; cursor:text;" title="Active Device UUID">
+        <span style="opacity:0.5;">UUID:</span> <span id="device-uuid-text">—</span>
+      </div>
+
       <!-- Device Directory Link -->
       <a href="/devices" class="btn-action" style="text-decoration:none;">Device Directory</a>
 
@@ -68,9 +73,9 @@
   <!-- Version & Self-Test Status Footer Bar -->
   <footer class="footer-bar">
     <div class="version-info">
-      <span>UI Version: <strong id="ui-version-badge">v1.0.13</strong></span>
+      <span>UI Version: <strong id="ui-version-badge">v1.0.14</strong></span>
       <span class="version-separator">•</span>
-      <span>DB Schema: <strong id="db-version-badge">v1.0.13</strong></span>
+      <span>DB Schema: <strong id="db-version-badge">v1.0.14</strong></span>
       <span class="version-separator">•</span>
       <span id="self-test-badge" class="self-test-status ok">
         <span class="status-dot-mini"></span>

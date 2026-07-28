@@ -4,7 +4,7 @@
     "test": "deno test --allow-net --allow-env --allow-read --allow-run tests/local_test.ts tests/auth_test.ts",
     "test:staging": "deno test --allow-net --allow-env --allow-read tests/staging_test.ts",
     "check:parity": "deno test --allow-net --allow-env --allow-read tests/staging_test.ts",
-    "emulator": "deno run --allow-net --allow-env --allow-read examples/device_emulator.ts",
+    "emulator": "deno run --env-file=staging.env --allow-net --allow-env --allow-read --watch=examples/ examples/device_emulator.ts",
     "db:push": "supabase db push",
     "uprev": "deno run --allow-read --allow-write scripts/uprev.ts",
     "deploy": "deployctl deploy --project=marveluzz-hub --entrypoint=src/main.ts",

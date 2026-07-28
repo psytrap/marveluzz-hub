@@ -44,6 +44,10 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
+    // Show active device UUID in header
+    const uuidEl = document.getElementById("device-uuid-text");
+    if (uuidEl) uuidEl.textContent = currentDeviceId;
+
     if (isDirectoryPage) {
       loadDeviceDirectory();
     } else {
