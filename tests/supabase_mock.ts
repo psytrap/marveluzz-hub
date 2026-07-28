@@ -135,6 +135,10 @@ export class MockSupabaseEngine {
     const dev = this.devices.get(deviceId);
     if (!dev) return false;
 
+    if (dev.controller_session_id !== null && dev.controller_session_id !== sessionId) {
+      return false; // Mutex lock: Reject if lease is already held by another tab!
+    }
+
     dev.status = "control";
     dev.controller_session_id = sessionId;
     return true;

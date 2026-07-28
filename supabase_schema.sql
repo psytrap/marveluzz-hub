@@ -174,7 +174,17 @@ RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    v_current_session TEXT;
 BEGIN
+    SELECT controller_session_id INTO v_current_session
+    FROM public.devices
+    WHERE id = p_device_id;
+
+    IF v_current_session IS NOT NULL AND v_current_session <> p_session_id THEN
+        RETURN FALSE; -- Lease locked by another active session!
+    END IF;
+
     UPDATE public.devices
     SET status = 'control',
         controller_session_id = p_session_id

@@ -252,3 +252,94 @@ Deno.test("Phase 3 State Machine Test: High-Level Connected / Disconnected Hiera
   assertEquals(validStates.length, 7);
 });
 
+Deno.test("Multi-Tab Mutex Control Lock Test: Two Tabs Mutex Lock & Hijack Rejection", () => {
+  const db = new MockSupabaseEngine();
+  const tabAlpha = "tab-session-alpha-101";
+  const tabBeta = "tab-session-beta-202";
+
+  // 1. Tab Alpha acquires exclusive control lease
+  const alphaAcquire = db.acquireControlLease(MOCK_DEVICE_ID, tabAlpha);
+  assertEquals(alphaAcquire, true);
+
+  const devAfterAlpha = db.devices.get(MOCK_DEVICE_ID);
+  assertEquals(devAfterAlpha?.status, "control");
+  assertEquals(devAfterAlpha?.controller_session_id, tabAlpha);
+
+  // 2. Tab Beta attempts to acquire control lease while Alpha holds it -> MUST BE REJECTED
+  const betaHijackAcquire = db.acquireControlLease(MOCK_DEVICE_ID, tabBeta);
+  assertEquals(betaHijackAcquire, false);
+  assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabAlpha);
+
+  // 3. Tab Beta attempts to release Tab Alpha's lease -> MUST BE REJECTED
+  const betaHijackRelease = db.releaseControlLease(MOCK_DEVICE_ID, tabBeta);
+  assertEquals(betaHijackRelease, false);
+  assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabAlpha);
+
+  // 4. Tab Alpha legitimately releases its control lease
+  const alphaRelease = db.releaseControlLease(MOCK_DEVICE_ID, tabAlpha);
+  assertEquals(alphaRelease, true);
+  assertEquals(db.devices.get(MOCK_DEVICE_ID)?.status, "live");
+  assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, null);
+
+  // 5. Now Tab Beta can successfully acquire the control lease
+  const betaAcquire = db.acquireControlLease(MOCK_DEVICE_ID, tabBeta);
+  assertEquals(betaAcquire, true);
+  assertEquals(db.devices.get(MOCK_DEVICE_ID)?.controller_session_id, tabBeta);
+});
+
+Deno.test("Multi-Device Security Isolation Test: Data, Auth Key & Command Queue Isolation", () => {
+  const db = new MockSupabaseEngine();
+  const deviceAId = "11111111-1111-4111-8111-111111111111";
+  const deviceAKey = "passcode_device_a_123";
+  
+  const deviceBId = "22222222-2222-4222-8222-222222222222";
+  const deviceBKey = "passcode_device_b_456";
+
+  db.seedDevice(deviceAId, deviceAKey, "Greenhouse Node A");
+  db.seedDevice(deviceBId, deviceBKey, "Solar Array Node B");
+
+  // 1. Separate UI Layout Schemas
+  db.registerUIDefinition(deviceAId, deviceAKey, { title: "Greenhouse Node A" });
+  db.registerUIDefinition(deviceBId, deviceBKey, { title: "Solar Array Node B" });
+
+  assertEquals(db.uiDefinitions.get(deviceAId)?.layout_def.title, "Greenhouse Node A");
+  assertEquals(db.uiDefinitions.get(deviceBId)?.layout_def.title, "Solar Array Node B");
+
+  // 2. Separate Telemetry Telemetry Ingest & Storage Isolation
+  db.ingestTelemetry(deviceAId, deviceAKey, { temp: 21.5, humidity: 65 });
+  db.ingestTelemetry(deviceBId, deviceBKey, { voltage: 48.2, current: 5.1 });
+
+  const latestA = db.telemetryLatest.get(deviceAId)?.data;
+  const latestB = db.telemetryLatest.get(deviceBId)?.data;
+
+  assertEquals(latestA?.temp, 21.5);
+  assertEquals(latestA?.voltage, undefined); // Device A has no voltage data
+
+  assertEquals(latestB?.voltage, 48.2);
+  assertEquals(latestB?.temp, undefined); // Device B has no temp data
+
+  // 3. Auth Key Rejection Cross-Spoofing Test
+  assertThrows(
+    () => {
+      // Device A trying to ingest data using Device B's secret key
+      db.ingestTelemetry(deviceAId, deviceBKey, { temp: 99.9 });
+    },
+    Error,
+    "Unauthorized: Invalid Device ID or Device Key."
+  );
+
+  // 4. Command Queue Dispatch Isolation Test
+  const cmdAId = db.queueCommand(deviceAId, "irrigation_pump", "toggle", true);
+
+  // Device B polls commands via telemetry ingest
+  const cmdsForB = db.ingestTelemetry(deviceBId, deviceBKey, { voltage: 48.5 });
+  assertEquals(cmdsForB.length, 0); // Command for Device A must NOT be leaked to Device B!
+
+  // Device A polls commands via telemetry ingest
+  const cmdsForA = db.ingestTelemetry(deviceAId, deviceAKey, { temp: 22.0 });
+  assertEquals(cmdsForA.length, 1);
+  assertEquals(cmdsForA[0].command_id, cmdAId);
+  assertEquals(cmdsForA[0].target, "irrigation_pump");
+});
+
+
