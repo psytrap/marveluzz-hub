@@ -233,9 +233,15 @@ public:
       }
 
       if (!payloadRecord.isNull()) {
-        // Defense-in-depth: Verify payload device_id matches local cfgDeviceId
+        // Defense 1: Verify payload device_id matches local cfgDeviceId
         const char* recDeviceId = payloadRecord["device_id"];
         if (recDeviceId != nullptr && cfgDeviceId.length() > 0 && String(recDeviceId) != cfgDeviceId) {
+          return;
+        }
+
+        // Defense 2: Ignore UPDATE WebSocket frames where status is not 'pending' (prevents double execution)
+        const char* cmdStatus = payloadRecord["status"];
+        if (cmdStatus != nullptr && String(cmdStatus) != "pending") {
           return;
         }
 
