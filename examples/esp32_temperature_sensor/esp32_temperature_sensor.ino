@@ -85,6 +85,7 @@ void setupWebSocket() {
 
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
+  webSocket.enableHeartbeat(15000, 3000, 2);
 }
 
 // -------------------------------------------------------------
@@ -274,20 +275,17 @@ void sendTelemetry() {
     uptimeSec, deviceState.viewersActive, deviceState.hasFault
   );
 
-  Serial.printf("📡 Sending Telemetry [%s] -> Temp=%.1f C, LED=%s, Fault=%s...\n",
-                deviceState.viewersActive ? "5s Fast Mode" : "30s Power-Save Mode",
-                temperatureC, deviceState.ledState ? "ON" : "OFF",
-                deviceState.hasFault ? "E-04" : "None");
-
   int httpCode = http.POST(jsonPayload);
   if (httpCode == 200) {
     String response = http.getString();
-    Serial.printf("✅ Telemetry Ingest Response: %s\n", response.c_str());
-
     // Update viewers_active presence stream mode (Commands are strictly WebSocket-only)
     TelemetryLogic::parseIngestResponse(response, cfgDeviceId, deviceState, applyLedHardwareState);
+
+    Serial.printf("[UPLINK] Telemetry Ingest [%s] -> Temp=%.1f C, LED=%s (HTTP 200 OK)\n",
+                  deviceState.viewersActive ? "5s Fast Mode" : "30s Power-Save Mode",
+                  temperatureC, deviceState.ledState ? "ON" : "OFF");
   } else {
-    Serial.printf("❌ Telemetry Ingest Error %d: %s\n", httpCode, http.getString().c_str());
+    Serial.printf("[UPLINK] Telemetry Error %d: %s\n", httpCode, http.getString().c_str());
   }
 
   http.end();
@@ -369,6 +367,40 @@ void loop() {
   }
 
   unsigned long now = millis();
+
+  // Send Phoenix WebSocket heartbeat every 25 seconds to keep Supabase Realtime channel alive (prevents 60s idle disconnect)
+  static unsigned long lastWsHeartbeatMs = 0;
+  if (deviceState.wsConnected && (now - lastWsHeartbeatMs >= 25000)) {
+    lastWsHeartbeatMs = now;
+    webSocket.sendTXT("{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":\"hb\"}");
+  }
+
+  // Print system memory and network debug statistics every 60 seconds
+  static unsigned long lastDebugPrint = 0;
+  if (now - lastDebugPrint >= 60000) {
+    lastDebugPrint = now;
+    uint32_t totalHeap = ESP.getHeapSize();
+    uint32_t freeHeap = ESP.getFreeHeap();
+    uint32_t minFreeHeap = ESP.getMinFreeHeap();
+    float pctUsed = (totalHeap > 0) ? ((float)(totalHeap - freeHeap) / totalHeap * 100.0) : 0.0;
+    float minPctUsed = (totalHeap > 0) ? ((float)(totalHeap - minFreeHeap) / totalHeap * 100.0) : 0.0;
+    int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+
+    Serial.println();
+    Serial.println("--- [System Debug Status] ---");
+    Serial.printf("  Free Heap: %u bytes (%u KB) - Used: %.1f%%\n", freeHeap, freeHeap / 1024, pctUsed);
+    Serial.printf("  Min Free Heap: %u bytes (%u KB) - Max Used: %.1f%%\n", minFreeHeap, minFreeHeap / 1024, minPctUsed);
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("  WiFi RSSI: %d dBm (IP: %s)\n", rssi, WiFi.localIP().toString().c_str());
+    } else {
+      Serial.println("  WiFi Status: Disconnected");
+    }
+    Serial.printf("  WebSocket Status: %s\n", deviceState.wsConnected ? "CONNECTED" : "DISCONNECTED");
+    Serial.printf("  Stream Mode: %s (%lums cadence)\n", deviceState.viewersActive ? "5s Fast Mode" : "30s Power-Save Mode", TelemetryLogic::getStreamIntervalMs(deviceState.viewersActive));
+    Serial.println("-----------------------------");
+    Serial.println();
+  }
+
   unsigned long interval = TelemetryLogic::getStreamIntervalMs(deviceState.viewersActive);
 
   if (now - lastUpdateMs >= interval) {

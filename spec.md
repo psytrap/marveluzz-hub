@@ -275,6 +275,10 @@ Marveluzz Hub employs a strict **decoupled dual-channel architecture** for low-l
    - **Exclusive WebSocket Push**: Downlink commands MUST be delivered exclusively via Channel A (**Supabase Realtime WebSockets**).
    - **Zero HTTP Command Polling**: IoT nodes MUST NOT process or execute commands piggybacked in periodic HTTP telemetry ingest responses. HTTP telemetry responses serve strictly to update viewer presence state (`viewers_active`).
 
+4. **Direct-to-Supabase Realtime API Constraint**:
+   - **No Supabase SSE Endpoint for Database Changes**: Supabase Cloud does **NOT** offer an HTTP SSE endpoint for PostgreSQL database changes (`postgres_changes`).
+   - **Supabase Realtime WebSocket Protocol**: Supabase Cloud exposes real-time database changes exclusively via Phoenix WebSockets (`wss://<project>.supabase.co/realtime/v1/websocket`). Physical IoT nodes connecting directly to Supabase Cloud must use WebSockets because Supabase Realtime provides no HTTP SSE alternative for database change streaming.
+
 ---
 
 #### 2.6.2 Dynamic UI Layout Schema Format Specification

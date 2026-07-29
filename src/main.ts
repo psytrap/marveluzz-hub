@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.33";
+const APP_VERSION = "1.0.34";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -686,6 +686,18 @@ async function handler(req: Request): Promise<Response> {
           broadcastSseEvent(deviceId, "device_status", { deviceId, status: newStatus, controller_session_id: null });
         }
         return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (target === "viewers_active") {
+        const isActive = Boolean(value);
+        if (supabase) {
+          await supabase
+            .from("devices")
+            .update({ viewers_active: isActive, viewers_last_seen: new Date().toISOString() })
+            .eq("id", deviceId);
+        } else if (mockDb) {
+          mockDb.updateDeviceViewersActive(deviceId, isActive);
+        }
       }
 
       let commandId: string = crypto.randomUUID();

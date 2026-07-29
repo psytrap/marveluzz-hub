@@ -189,6 +189,22 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     assertEquals(res.length, 1);
     assertEquals(res[0].viewers_active, true);
   });
+
+  await t.step("UI viewers_active command updates devices table state so subsequent telemetry ingest returns viewers_active=true", () => {
+    const db = new MockSupabaseEngine();
+
+    // 1. Initially viewers_active is false
+    const initialRes = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 20.0 });
+    assertEquals(initialRes[0].viewers_active, false);
+
+    // 2. UI dispatches viewers_active = true command
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, true);
+    db.queueCommand(MOCK_DEVICE_ID, "viewers_active", "set_value", true);
+
+    // 3. Subsequent telemetry ingest returns viewers_active = true, preserving Fast Mode
+    const activeRes = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 20.5 });
+    assertEquals(activeRes[0].viewers_active, true);
+  });
 });
 
 Deno.test("Local Engine: Exclusive Control Lease & Storage Lifecycle", async (t) => {
