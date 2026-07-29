@@ -1,6 +1,6 @@
 // Marveluzz Hub - Edge API Endpoint Routes (routes.ts)
 
-import { APP_VERSION, REQUIRED_SCHEMA_VERSION, SUPABASE_URL, SUPABASE_ANON_KEY, mockDb, supabase } from "./db.ts";
+import { APP_VERSION, REQUIRED_SCHEMA_VERSION, START_TIME, SUPABASE_URL, SUPABASE_ANON_KEY, mockDb, supabase } from "./db.ts";
 import { DISABLE_AUTH, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, MOCK_AUTH, ALLOWED_GITHUB_USERS, COOKIE_NAME, checkSessionAsync, createSignedSessionToken, deleteSession, getLoginHtml } from "./auth.ts";
 
 export async function handleRequest(req: Request): Promise<Response> {
@@ -216,6 +216,43 @@ export async function handleRequest(req: Request): Promise<Response> {
     }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // Memory & Diagnostic Endpoint
+  if (pathname === "/api/debug/memory" && req.method === "GET") {
+    const mem = Deno.memoryUsage();
+    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
+    return new Response(JSON.stringify({
+      memory: {
+        rss: mem.rss,
+        heapTotal: mem.heapTotal,
+        heapUsed: mem.heapUsed,
+        external: mem.external
+      },
+      uptimeSeconds
+    }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // Device Storage Footprint Statistics Endpoint
+  if (pathname === "/api/devices/stats" && req.method === "GET") {
+    const deviceId = url.searchParams.get("device_id");
+    let layoutDef: any = null;
+    let historyCount = 0;
+    if (supabase && deviceId) {
+      const { data: uiRow } = await supabase.from("ui_definitions").select("layout_def").eq("device_id", deviceId).single();
+      if (uiRow) layoutDef = uiRow.layout_def;
+      const { count } = await supabase.from("telemetry_history").select("id", { count: "exact", head: true }).eq("device_id", deviceId);
+      historyCount = count || 0;
+    } else if (mockDb && deviceId) {
+      layoutDef = mockDb.uiDefinitions.get(deviceId) || null;
+      historyCount = mockDb.telemetryHistory.filter(item => item.device_id === deviceId).length;
+    }
+    return new Response(JSON.stringify({
+      deviceId,
+      layout_definition: layoutDef,
+      historyCount,
+      estimatedBytes: historyCount * 128
+    }), { headers: { "Content-Type": "application/json" } });
+  }
+
   // Protected Page Views
   if (pathname === "/" || pathname === "/devices") {
     const user = await getAuthenticatedUser();
@@ -405,11 +442,11 @@ export async function handleRequest(req: Request): Promise<Response> {
           p_layout_def: layoutDef
         });
         if (error) return new Response(JSON.stringify({ error: error.message }), { status: 401 });
-        return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, registered: Boolean(data) }), { headers: { "Content-Type": "application/json" } });
       } else if (mockDb) {
         const ok = mockDb.registerUIDefinition(deviceId, deviceKey, layoutDef);
         if (!ok) return new Response(JSON.stringify({ error: "Invalid device key" }), { status: 401 });
-        return new Response(JSON.stringify(true), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
       }
     } catch (e: any) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500 });

@@ -5,6 +5,7 @@ import { MockSupabaseEngine } from "../tests/supabase_mock.ts";
 
 export const APP_VERSION = "1.0.37";
 export const REQUIRED_SCHEMA_VERSION = "20260728000000";
+export const START_TIME = Date.now();
 
 // 4 Standard Supabase Environment Variables
 export const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
