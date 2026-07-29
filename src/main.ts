@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.19";
+const APP_VERSION = "1.0.20";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -35,8 +35,37 @@ export const ALLOWED_GITHUB_USERS = (Deno.env.get("ALLOWED_GITHUB_USERS") || "")
   .filter(Boolean);
 export const COOKIE_NAME = "marveluzz_session";
 export const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
+export const SESSION_SECRET = Deno.env.get("SESSION_SECRET") || Deno.env.get("SUPABASE_JWT_SECRET") || "marveluzz-hub-secret-session-key-2026";
 
 export const activeSessions = new Map<string, { username: string; expires: number }>();
+export const revokedSessions = new Set<string>();
+
+let cryptoKeyPromise: Promise<CryptoKey> | null = null;
+function getCryptoKey(): Promise<CryptoKey> {
+  if (!cryptoKeyPromise) {
+    const encoder = new TextEncoder();
+    cryptoKeyPromise = crypto.subtle.importKey(
+      "raw",
+      encoder.encode(SESSION_SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"]
+    );
+  }
+  return cryptoKeyPromise;
+}
+
+export async function createSignedSessionToken(username: string): Promise<{ token: string; expires: number }> {
+  const expires = Date.now() + SESSION_EXPIRY_MS;
+  const payload = `${username}:${expires}`;
+  const key = await getCryptoKey();
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const sigArray = Array.from(new Uint8Array(sigBuffer));
+  const sigHex = sigArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  const token = `${payload}.${sigHex}`;
+  activeSessions.set(token, { username, expires });
+  return { token, expires };
+}
 
 export function createSession(sessionId: string, username: string): number {
   const expires = Date.now() + SESSION_EXPIRY_MS;
@@ -44,8 +73,51 @@ export function createSession(sessionId: string, username: string): number {
   return expires;
 }
 
+export async function checkSessionAsync(token: string): Promise<string | null> {
+  if (!token) return null;
+  if (revokedSessions.has(token)) return null;
+
+  // 1. Fast in-memory cache lookup
+  const cached = activeSessions.get(token);
+  if (cached) {
+    if (Date.now() > cached.expires) {
+      activeSessions.delete(token);
+      return null;
+    }
+    return cached.username;
+  }
+
+  // 2. Stateless HMAC verification (Survives server spin-downs and restarts!)
+  try {
+    const dotIdx = token.lastIndexOf(".");
+    if (dotIdx === -1) return null;
+    const payload = token.substring(0, dotIdx);
+    const sigHex = token.substring(dotIdx + 1);
+
+    const colonIdx = payload.indexOf(":");
+    if (colonIdx === -1) return null;
+    const username = payload.substring(0, colonIdx);
+    const expires = Number(payload.substring(colonIdx + 1));
+
+    if (isNaN(expires) || Date.now() > expires) return null;
+
+    const key = await getCryptoKey();
+    const sigMatch = sigHex.match(/.{1,2}/g);
+    if (!sigMatch) return null;
+    const sigArray = new Uint8Array(sigMatch.map(b => parseInt(b, 16)));
+
+    const isValid = await crypto.subtle.verify("HMAC", key, sigArray, new TextEncoder().encode(payload));
+    if (isValid) {
+      activeSessions.set(token, { username, expires });
+      return username;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 export function checkSession(sessionId: string): string | null {
-  if (!sessionId) return null;
+  if (!sessionId || revokedSessions.has(sessionId)) return null;
   const sess = activeSessions.get(sessionId);
   if (!sess) return null;
   if (Date.now() > sess.expires) {
@@ -57,6 +129,9 @@ export function checkSession(sessionId: string): string | null {
 
 export function deleteSession(sessionId: string) {
   activeSessions.delete(sessionId);
+  if (sessionId) {
+    revokedSessions.add(sessionId);
+  }
 }
 
 function getLoginHtml(): string {
@@ -213,7 +288,7 @@ async function handler(req: Request): Promise<Response> {
       const cookieHeader = req.headers.get("cookie") || "";
       const match = cookieHeader.match(new RegExp(`(^| )${COOKIE_NAME}=([^;]+)`));
       sessionId = match ? match[2] : "";
-      const username = checkSession(sessionId);
+      const username = await checkSessionAsync(sessionId);
       isAuthorized = username !== null;
     }
 
@@ -303,15 +378,14 @@ async function handler(req: Request): Promise<Response> {
         return Response.redirect(`${url.origin}/login?error=not_allowed`, 302);
       }
 
-      const randomSessionId = crypto.randomUUID();
-      const expires = createSession(randomSessionId, gitUsername);
+      const { token, expires } = await createSignedSessionToken(gitUsername);
       const expiresDate = new Date(expires).toUTCString();
 
       return new Response(null, {
         status: 302,
         headers: {
           "Location": "/",
-          "Set-Cookie": `${COOKIE_NAME}=${randomSessionId}; Path=/; HttpOnly; SameSite=Strict; Expires=${expiresDate}`,
+          "Set-Cookie": `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict; Expires=${expiresDate}`,
         },
       });
     }

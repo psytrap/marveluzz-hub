@@ -50,18 +50,6 @@
         "id": "uptime",
         "value": "19230s"
       }
-    },
-    {
-      "type": "divider",
-      "properties": {}
-    },
-    {
-      "type": "img",
-      "properties": {
-        "label": "Field Camera Stream",
-        "id": "webcam",
-        "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80"
-      }
     }
   ]
 }

@@ -313,17 +313,12 @@ async function loadInitialData() {
       updateStatusBadge("detached", "Detached");
     }
 
-    // Default 8-Widget Renderer Demonstration Layout
+    // Initial Empty State (Clarifies device has not set its UI layout yet)
     renderUIDefinition({
-      title: "ESP32 Temperature Node",
+      title: "Device Panel",
       layout: [
-        { type: "number", properties: { label: "DS18B20 Temperature", id: "temperature", value: "24.5", unit: "°C" } },
-        { type: "range", properties: { label: "Fan Speed Target", id: "fan_speed", value: "75", min: "0", max: "100", unit: "%" } },
-        { type: "button", properties: { label: "Toggle Cooling Fan Relay", id: "fan_toggle", value: "false" } },
-        { type: "indicator", properties: { label: "System Status", id: "status_text", value: "Running Normally" } },
-        { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s" } },
-        { type: "divider", properties: {} },
-        { type: "img", properties: { label: "Field Camera Stream", id: "webcam", url: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80" } }
+        { type: "indicator", properties: { label: "UI Layout Schema", id: "layout_status", value: "Awaiting Device Layout Schema" } },
+        { type: "text", properties: { label: "Notice", id: "layout_notice", value: "This device has not uploaded its UI layout definition yet. Interactive controls will appear here automatically once the device connects and registers its layout schema.", readonly: "true" } }
       ]
     });
 

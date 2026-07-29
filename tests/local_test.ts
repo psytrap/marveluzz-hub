@@ -1,7 +1,7 @@
 // Marveluzz Hub - Local Test Suite (MockSupabaseEngine, file I/O & unit tests — no live services)
 import { assertEquals, assert, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { MockSupabaseEngine } from "./supabase_mock.ts";
-import { createSession, checkSession, deleteSession } from "../src/main.ts";
+import { createSession, checkSession, deleteSession, createSignedSessionToken, checkSessionAsync, activeSessions } from "../src/main.ts";
 
 const MOCK_DEVICE_ID = "32323232-3232-4232-8232-28c13340c86c";
 const MOCK_DEVICE_KEY = "secret_passcode_123";
@@ -58,6 +58,18 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     const storedDef = db.uiDefinitions.get(MOCK_DEVICE_ID);
     assert(storedDef !== undefined);
     assertEquals(storedDef?.layout_def.title, "ESP32 Temp Sensor Node");
+  });
+
+  await t.step("Asserts un-registered devices return null layout schema requiring awaiting empty state", () => {
+    const db = new MockSupabaseEngine();
+    const unregId = "99999999-9999-4999-8999-999999999999";
+    
+    // Unregistered device has no schema stored
+    const storedDef = db.uiDefinitions.get(unregId);
+    assertEquals(storedDef, undefined);
+
+    const devRecord = db.devices.get(unregId);
+    assertEquals(devRecord, undefined);
   });
 
   await t.step("Enforces secret key authentication and rejects invalid keys", () => {
@@ -430,7 +442,7 @@ Deno.test("Local Engine: Schema Parity & Session Unit Tests", async (t) => {
     assertEquals(mockSelfTestResponse.contractCompatible, true);
   });
 
-  await t.step("Creates, checks, and deletes active user sessions", () => {
+  await t.step("Creates, checks, and deletes active user sessions", async () => {
     const sessionId = "test-session-uuid-12345";
     const username = "testuser_alice";
 
@@ -442,5 +454,21 @@ Deno.test("Local Engine: Schema Parity & Session Unit Tests", async (t) => {
 
     deleteSession(sessionId);
     assertEquals(checkSession(sessionId), null);
+
+    // Test Stateless HMAC Session Signing & Spin-Down Survival
+    const { token } = await createSignedSessionToken("spin_down_user");
+    assert(token.includes("spin_down_user"));
+
+    // Verify session passes
+    const auth1 = await checkSessionAsync(token);
+    assertEquals(auth1, "spin_down_user");
+
+    // SIMULATE DENO DEPLOY SERVER RESTART / ISOLATE SPIN-DOWN (Clear in-memory Map)
+    activeSessions.clear();
+    assertEquals(activeSessions.size, 0);
+
+    // Verify stateless HMAC token survives memory wipe cleanly!
+    const auth2 = await checkSessionAsync(token);
+    assertEquals(auth2, "spin_down_user");
   });
 });

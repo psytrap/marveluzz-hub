@@ -198,7 +198,22 @@ graph TD
 | `SUPABASE_URL` | Base API Gateway endpoint (`https://<project-id>.supabase.co`) | Shared (Edge & Browser) |
 | `SUPABASE_ANON_KEY` | Public anonymous API key (enforces RLS) | Public (Browser Client) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Admin secret key (bypasses RLS for ingest RPCs) | Server-Only (Deno Edge) |
-| `SUPABASE_JWT_SECRET` | Secret key for verifying and decoding User JWT auth tokens | Server-Only (Offline Validation) |
+| `SUPABASE_JWT_SECRET` | Secret key for verifying and decoding User JWT auth tokens & HMAC sessions | Server-Only (Offline Validation) |
+
+---
+
+#### 2.5.1 Stateless HMAC-SHA256 Session Security Architecture (Spin-Down Resistant)
+
+To prevent session invalidation caused by frequent Deno Deploy server isolate spin-downs and auto-restarts, Marveluzz Hub implements **stateless HMAC-SHA256 signed session tokens**:
+
+1. **Token Token Structure**: `marveluzz_session = <username>:<expires_timestamp>.<hmac_sha256_hex>`
+2. **Cryptographic Signing**: Tokens are signed on successful login using Web Crypto API (`crypto.subtle.sign`) with `SESSION_SECRET` (derived from `SUPABASE_JWT_SECRET`).
+3. **Spin-Down & Restart Resilience**:
+   - In-memory `activeSessions` `Map` is used as a sub-millisecond fast cache.
+   - If Deno Deploy spins down or restarts, clearing server memory, incoming requests present their signed cookie `marveluzz_session`.
+   - `checkSessionAsync` verifies the HMAC signature using Web Crypto (`crypto.subtle.verify`) and checks the expiration timestamp. If valid, the session is re-populated into memory automatically without requiring the user to log in again.
+4. **Explicit Revocation**:
+   - Explicit user logout (`/logout`) adds the token to `revokedSessions`, immediately invalidating future requests even if the HMAC signature remains valid.
 
 ---
 
@@ -540,28 +555,5 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 
 ## 7. Future Enhancements & TODO Roadmap
 
-### UI & Design
-- [ ] **UI General Cleanup**: Polish overall Hub dashboard UI — review spacing, typography consistency, widget alignment, empty states, and loading skeletons. Audit all interactive elements for hover/focus states. Remove debug artifacts (excessive `console.log` statements, `[BTN]` debug labels) before production release.
-- [ ] **Smart Stale & Disconnection Detection**: Refactor simplistic client-side timer (`startKeepaliveStaleDetector`) into an adaptive heartbeat state machine. Calculate stale thresholds dynamically based on active telemetry stream intervals (10s default vs 5s fast viewer stream), network latency jitter, and server-side `last_seen` timestamp drift rather than fixed 12s hardcoded timeout.
-- [ ] **Device Storage Stats Page** (`/devices/stats?device_id=...`): Port the dedicated storage & diagnostics page from `Every-Panel`. Currently Marveluzz Hub exposes a raw "Wipe Data" `btn-delete` directly in the Device Directory row. Instead, replace it with a "Storage Stats" link (muted secondary style matching Every-Panel) that navigates to a full stats page containing:
-  - **4 metric cards**: Total telemetry history records, estimated storage footprint (Bytes/KB/MB), retention policy (TTL), device secret key
-  - **Retention Policy control**: Dropdown (1 / 7 / 30 / 365 days / Infinite) + "Apply Policy" button → `POST /api/devices/settings`
-  - **Danger Zone section**: "Wipe Device Storage" `btn-delete` button → `POST /api/devices/delete`, then redirect back to `/devices`
-
-### Verification & Quality Assurance
-- [ ] **Race Conditions & Concurrency Analysis**: Perform formal race condition analysis on concurrent lease takeover (`acquire_control_lease`), simultaneous telemetry ingestion (`ingest_telemetry`), and out-of-order command processing across multi-tab web sessions and edge replicas.
-- [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
-- [x] **Automated Version Uprev Mechanism**: Implement automated version uprev mechanism to synchronize `APP_VERSION`, `REQUIRED_SCHEMA_VERSION`, and migration file headers automatically upon releases or schema changes.
-- [ ] **Formal Staging Branching Strategy**: Establish a formal Git staging branching strategy (`staging` vs `main` release branches, separate Deno Deploy preview environments, and isolated Supabase staging database instances).
-
-### One-Time Authentication & Device Pairing Workflow
-- [ ] **Zero-Dashboard PIN Pairing**:
-  - Implement 6-digit PIN one-time pairing endpoint (`POST /api/device/pair`) for Zero-Dashboard Plug & Play onboarding.
-  - Implement Hub UI "+ Add New Device" modal with 6-digit PIN generator & QR code renderer.
-  - Implement ESP32 captive portal auto-discovery handshake to receive and store `deviceId` and `deviceKey` permanently in NVS Flash memory upon valid PIN authentication.
-
-### Security, Analytics & Ecosystem Integrations
-- [x] **GitHub OAuth & User Access Control**: Implement optional GitHub OAuth & Mock Authentication (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `MOCK_AUTH`, `ALLOWED_GITHUB_USERS`, `DISABLE_AUTH`) to protect dashboard access, complete with full integration test suite (`tests/auth_test.ts`).
-- [ ] **Server-Side Telemetry Downsampling & Aggregation**: Implement configurable telemetry logging downsampling policy (1m/5m windows) to store consolidated `min`, `max`, `avg`, and `latest` metric data points in database history.
-- [ ] **Home Assistant & MQTT Integration**: Expose registered device entities dynamically to Home Assistant via MQTT auto-discovery and WebSocket/HTTP bridges.
-- [ ] **Public Read-Only Dashboard Sharing**: Allow device owners to share public, read-only panel links with unauthenticated users while strictly locking exclusive control lease write privileges.
+All active roadmap tasks and future enhancements are maintained in the single project backlog file:
+👉 **[TODO.md](file:///home/mik/Documents/Bastel/2023-/marveluzz-hub/marveluzz-hub/TODO.md)**
