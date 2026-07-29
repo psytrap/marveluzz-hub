@@ -2,7 +2,7 @@
 // Bumps APP_VERSION in src/main.ts and public/index.html
 // Also synchronizes REQUIRED_SCHEMA_VERSION with the latest supabase/migrations/ timestamp
 
-const MAIN_TS_PATH = "./src/main.ts";
+const DB_TS_PATH = "./src/db.ts";
 const INDEX_HTML_PATH = "./public/index.html";
 const EMULATOR_PATH = "./examples/emulator/device_emulator.ts";
 const MIGRATIONS_DIR = "./supabase/migrations";
@@ -10,11 +10,11 @@ const MIGRATIONS_DIR = "./supabase/migrations";
 async function uprevVersion() {
   const bumpType = Deno.args[0] || "patch";
   
-  // 1. Read src/main.ts
-  let mainContent = await Deno.readTextFile(MAIN_TS_PATH);
-  const versionMatch = mainContent.match(/const APP_VERSION = "([^"]+)";/);
+  // 1. Read src/db.ts
+  let dbContent = await Deno.readTextFile(DB_TS_PATH);
+  const versionMatch = dbContent.match(/(?:export\s+)?const APP_VERSION = "([^"]+)";/);
   if (!versionMatch) {
-    console.error("❌ Could not find APP_VERSION definition in src/main.ts");
+    console.error("❌ Could not find APP_VERSION definition in src/db.ts");
     Deno.exit(1);
   }
 
@@ -62,16 +62,16 @@ async function uprevVersion() {
     // directory read error ignored
   }
 
-  // 3. Update src/main.ts
-  mainContent = mainContent.replace(
-    /const APP_VERSION = "[^"]+";/,
-    `const APP_VERSION = "${newVersion}";`
+  // 3. Update src/db.ts
+  dbContent = dbContent.replace(
+    /(?:export\s+)?const APP_VERSION = "[^"]+";/,
+    `export const APP_VERSION = "${newVersion}";`
   );
-  mainContent = mainContent.replace(
-    /const REQUIRED_SCHEMA_VERSION = "[^"]+";/,
-    `const REQUIRED_SCHEMA_VERSION = "${latestSchemaVersion}";`
+  dbContent = dbContent.replace(
+    /(?:export\s+)?const REQUIRED_SCHEMA_VERSION = "[^"]+";/,
+    `export const REQUIRED_SCHEMA_VERSION = "${latestSchemaVersion}";`
   );
-  await Deno.writeTextFile(MAIN_TS_PATH, mainContent);
+  await Deno.writeTextFile(DB_TS_PATH, dbContent);
 
   // 4. Update public/index.html
   let indexContent = await Deno.readTextFile(INDEX_HTML_PATH);
@@ -96,7 +96,7 @@ async function uprevVersion() {
   console.log(`🚀 Automated Version Uprev Completed:`);
   console.log(`   📦 App Version    : v${currentVersion} ➔ v${newVersion}`);
   console.log(`   🗄️ DB Schema Ver  : v${latestSchemaVersion}`);
-  console.log(`   Updated: ${MAIN_TS_PATH}`);
+  console.log(`   Updated: ${DB_TS_PATH}`);
   console.log(`   Updated: ${INDEX_HTML_PATH}`);
   console.log(`   Updated: ${EMULATOR_PATH}`);
 }
