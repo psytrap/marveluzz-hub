@@ -8,39 +8,14 @@ export async function handleRequest(req: Request): Promise<Response> {
   const pathname = url.pathname;
 
   // Static File Serving
-  if (pathname === "/public/style.css") {
+  if (pathname.startsWith("/public/")) {
     try {
-      const content = await Deno.readTextFile("./public/style.css");
-      return new Response(content, { headers: { "Content-Type": "text/css" } });
+      const filePath = "." + pathname;
+      const content = await Deno.readTextFile(filePath);
+      const mimeType = pathname.endsWith(".css") ? "text/css" : "application/javascript";
+      return new Response(content, { headers: { "Content-Type": mimeType } });
     } catch (_) {
-      return new Response("CSS not found", { status: 404 });
-    }
-  }
-
-  if (pathname === "/public/app.js") {
-    try {
-      const content = await Deno.readTextFile("./public/app.js");
-      return new Response(content, { headers: { "Content-Type": "application/javascript" } });
-    } catch (_) {
-      return new Response("JS not found", { status: 404 });
-    }
-  }
-
-  if (pathname === "/public/devices.js") {
-    try {
-      const content = await Deno.readTextFile("./public/devices.js");
-      return new Response(content, { headers: { "Content-Type": "application/javascript" } });
-    } catch (_) {
-      return new Response("JS not found", { status: 404 });
-    }
-  }
-
-  if (pathname === "/public/panel.js") {
-    try {
-      const content = await Deno.readTextFile("./public/panel.js");
-      return new Response(content, { headers: { "Content-Type": "application/javascript" } });
-    } catch (_) {
-      return new Response("JS not found", { status: 404 });
+      return new Response("File not found", { status: 404 });
     }
   }
 
