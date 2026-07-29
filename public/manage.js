@@ -55,7 +55,7 @@ async function loadDeviceManagementPage() {
     const lastSeenStr = stats.lastSeen ? new Date(stats.lastSeen).toLocaleString() : "Never";
 
     container.innerHTML = `
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; width:100%; max-width:1100px; margin:0 auto;">
+      <div style="display:flex; flex-direction:column; gap:20px; width:100%; max-width:800px; margin:0 auto;">
         
         <!-- Card 1: Identity & Status -->
         <div class="glass widget-card">

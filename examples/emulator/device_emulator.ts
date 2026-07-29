@@ -8,7 +8,7 @@ const DEFAULT_DEVICE_ID = Deno.env.get("EMULATOR_DEVICE_ID") || Deno.env.get("TE
 const DEFAULT_DEVICE_KEY = Deno.env.get("EMULATOR_DEVICE_KEY") || Deno.env.get("TEST_DEVICE_KEY") || "secret_passcode_123";
 
 // Kept in sync with APP_VERSION in src/main.ts via `deno task uprev`
-const EMULATOR_VERSION = "1.0.52";
+const EMULATOR_VERSION = "1.0.53";
 
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="en">

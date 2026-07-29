@@ -18,9 +18,8 @@
 - [ ] **Investigate & Fix Live Device State Management**:
   - Audit status transitions between `live`, `control`, `detached`, `stale`, and `disconnected`.
   - Fix edge cases where background keepalive timers or incoming telemetry events incorrectly override status badges or control button visibility across multi-tab web UI views and directory pages.
+- [ ] **Mobile Responsiveness & Responsive Layouts**: Make all dashboard views (Device Directory, Device Panel, and Device Management) fully mobile-friendly with responsive media queries, touch-friendly control targets, flexible card wrapping, and viewport optimizations.
 - [ ] **UI General Cleanup**: Polish overall Hub dashboard UI — review spacing, typography consistency, widget alignment, empty states, and loading skeletons.
-- [ ] **Smart Stale & Disconnection Detection**: Refactor client-side keepalive timer into an adaptive heartbeat state machine based on active telemetry stream rates and network jitter.
-- [ ] **Device Storage Stats Page** (`/devices/stats?device_id=...`): Implement dedicated storage footprint metrics, retention policy configuration, and secret key rotation page.
 - [ ] **Container Flow Layout Handling** (`properties.flow`): Implement dynamic container flex layout handling in `renderUIDefinition()` (`public/panel.js`) to support `"row"` (horizontal flex wrapping) and `"column"` (vertical stacked layout) as specified in §2.6.2.
 - [ ] **Dynamic Chart Widget Type** (`type: "chart"`): Implement dynamic Chart.js widget renderer in `renderUIDefinition()` (`public/panel.js`) to support device-declared time-series plots bound to `widget.properties.target_key` as specified in §2.6.2.
 
