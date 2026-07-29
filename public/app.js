@@ -313,14 +313,21 @@ async function loadInitialData() {
       updateStatusBadge("detached", "Detached");
     }
 
-    // Initial Empty State (Clarifies device has not set its UI layout yet)
-    renderUIDefinition({
-      title: "Device Panel",
-      layout: [
-        { type: "indicator", properties: { label: "UI Layout Schema", id: "layout_status", value: "Awaiting Device Layout Schema" } },
-        { type: "text", properties: { label: "Notice", id: "layout_notice", value: "This device has not uploaded its UI layout definition yet. Interactive controls will appear here automatically once the device connects and registers its layout schema.", readonly: "true" } }
-      ]
-    });
+    if (stats && stats.layout_definition) {
+      renderUIDefinition(stats.layout_definition);
+      if (stats.telemetry_latest) {
+        updateTelemetryValues(stats.telemetry_latest);
+      }
+    } else {
+      // Render Awaiting Schema Empty State if device has never uploaded a layout schema to DB
+      renderUIDefinition({
+        title: "Device Panel",
+        layout: [
+          { type: "indicator", properties: { label: "UI Layout Schema", id: "layout_status", value: "Awaiting Device Layout Schema" } },
+          { type: "text", properties: { label: "Notice", id: "layout_notice", value: "This device has not uploaded its UI layout definition yet. Interactive controls will appear here automatically once the device connects and registers its layout schema.", readonly: "true" } }
+        ]
+      });
+    }
 
     initChart();
   } catch (e) {
