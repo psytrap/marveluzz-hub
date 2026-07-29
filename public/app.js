@@ -213,10 +213,16 @@ function toggleInputLockOverlay(isOwner) {
 // 3. Supabase Realtime Subscriptions
 // -------------------------------------------------------------
 function setupRealtimeSubscriptions() {
+  const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
+
   if (supabaseClient) {
     const channel = supabaseClient
       .channel('public:dashboard')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, payload => {
+        if (isDirectoryPage) {
+          loadDeviceDirectory();
+          return;
+        }
         if (payload.new && payload.new.id === currentDeviceId) {
           lastSeenTimestamp = Date.now();
           const serverSession = payload.new.controller_session_id;
@@ -233,13 +239,18 @@ function setupRealtimeSubscriptions() {
           }
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'telemetry_latest' }, payload => {
+        if (isDirectoryPage) return;
         if (payload.new && payload.new.device_id === currentDeviceId) {
           lastSeenTimestamp = Date.now();
           updateTelemetryData(payload.new.data);
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ui_definitions' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ui_definitions' }, payload => {
+        if (isDirectoryPage) {
+          loadDeviceDirectory();
+          return;
+        }
         if (payload.new && payload.new.device_id === currentDeviceId) {
           lastSeenTimestamp = Date.now();
           renderUIDefinition(payload.new.layout_def);

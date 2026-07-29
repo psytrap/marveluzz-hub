@@ -130,6 +130,14 @@ export class MockSupabaseEngine {
     return executedCommands;
   }
 
+  public updateDeviceViewersActive(deviceId: string, active: boolean) {
+    const dev = this.devices.get(deviceId);
+    if (dev) {
+      dev.viewers_active = active;
+      dev.viewers_last_seen = new Date().toISOString();
+    }
+  }
+
   // Mirrors RPC: acquire_control_lease
   public acquireControlLease(deviceId: string, sessionId: string): boolean {
     const dev = this.devices.get(deviceId);

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://marveluzz-hub.internal/schemas/telemetry_uplink.json",
+  "title": "Telemetry Uplink Payload Schema",
+  "description": "JSON Schema for ingest_telemetry RPC uplink payload transmitted periodically by IoT nodes.",
+  "type": "object",
+  "required": ["p_device_id", "p_device_key", "p_telemetry_data"],
+  "properties": {
+    "p_device_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique UUID identifier of the IoT device."
+    },
+    "p_device_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Secret authentication key of the IoT device."
+    },
+    "p_telemetry_data": {
+      "type": "object",
+      "description": "Arbitrary key-value map representing current sensor values, actuator states, and diagnostics.",
+      "additionalProperties": true,
+      "properties": {
+        "temperature": { "type": "number" },
+        "led_toggle": { "type": "boolean" },
+        "led_state": { "type": "string" },
+        "uptime": { "type": "string" },
+        "viewers_active": { "type": "boolean" },
+        "power_save_mode": { "type": "boolean" },
+        "status_text": { "type": "string" }
+      }
+    }
+  }
+}

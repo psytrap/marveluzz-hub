@@ -118,19 +118,25 @@ BEGIN
     INSERT INTO public.telemetry_history (device_id, data, created_at)
     VALUES (p_device_id, p_telemetry_data, NOW());
 
-    -- 5. Fetch and Mark Pending Commands for Execution
+    -- 5. Fetch and Mark Pending Commands for Execution (Always return viewers_active even if no pending commands)
     RETURN QUERY
     WITH pending AS (
         SELECT id FROM public.device_commands
         WHERE device_id = p_device_id AND status = 'pending'
         ORDER BY created_at ASC
         FOR UPDATE
+    ),
+    executed AS (
+        UPDATE public.device_commands dc
+        SET status = 'executed'
+        FROM pending p
+        WHERE dc.id = p.id
+        RETURNING dc.id AS command_id, dc.target, dc.action, dc.value, v_viewers_active
     )
-    UPDATE public.device_commands dc
-    SET status = 'executed'
-    FROM pending p
-    WHERE dc.id = p.id
-    RETURNING dc.id AS command_id, dc.target, dc.action, dc.value, v_viewers_active;
+    SELECT * FROM executed
+    UNION ALL
+    SELECT NULL::UUID AS command_id, NULL::TEXT AS target, NULL::TEXT AS action, NULL::JSONB AS value, v_viewers_active AS viewers_active
+    WHERE NOT EXISTS (SELECT 1 FROM executed);
 END;
 $$;
 

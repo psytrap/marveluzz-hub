@@ -234,23 +234,70 @@ public:
       return;
     }
 
-    // Handle standard HTTP POST RPC array payload
-    if (doc.is<JsonArray>()) {
-      JsonArray commands = doc.as<JsonArray>();
-      for (JsonObject cmd : commands) {
+    // Handle JSON object response: {"success":true, "viewers_active":bool, "commands":[...]}
+    if (doc.is<JsonObject>()) {
+      JsonObject obj = doc.as<JsonObject>();
+      if (!obj["viewers_active"].isNull()) {
+        state.viewersActive = obj["viewers_active"].as<bool>();
+        state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
+      }
+      JsonArray cmds = obj["commands"].as<JsonArray>();
+      for (JsonObject cmd : cmds) {
         const char* target = cmd["target"];
         if (target == nullptr) continue;
-
         if (String(target) == "led_toggle") {
-          bool val = cmd["value"] | !state.ledState;
+          bool val = (String(cmd["action"] | "") == "set_value")
+                       ? cmd["value"].as<bool>()
+                       : !state.ledState;
           state.ledState = val;
           if (onLedCommand != nullptr) {
             onLedCommand(state.ledState);
           }
-        } else if (String(target) == "viewers_active") {
-          bool val = cmd["value"] | true;
-          state.viewersActive = val;
+        }
+      }
+      return;
+    }
+
+    // Handle standard HTTP POST RPC array payload:
+    // Format: [{"success":true, "viewers_active":bool, "commands":[{"target":..., "action":..., "value":...}]}]
+    if (doc.is<JsonArray>()) {
+      for (JsonObject row : doc.as<JsonArray>()) {
+
+        // Update viewers_active from top-level field
+        if (!row["viewers_active"].isNull()) {
+          state.viewersActive = row["viewers_active"].as<bool>();
           state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
+        }
+
+        // Unwrap nested commands array or direct row fields
+        JsonArray cmds = row["commands"].as<JsonArray>();
+        if (!cmds.isNull()) {
+          for (JsonObject cmd : cmds) {
+            const char* target = cmd["target"];
+            if (target == nullptr) continue;
+
+            if (String(target) == "led_toggle") {
+              bool val = (String(cmd["action"] | "") == "set_value")
+                           ? cmd["value"].as<bool>()
+                           : !state.ledState;
+              state.ledState = val;
+              if (onLedCommand != nullptr) {
+                onLedCommand(state.ledState);
+              }
+            }
+          }
+        } else {
+          // Direct command row format
+          const char* target = row["target"];
+          if (target != nullptr && String(target) == "led_toggle") {
+            bool val = (String(row["action"] | "") == "set_value")
+                         ? row["value"].as<bool>()
+                         : !state.ledState;
+            state.ledState = val;
+            if (onLedCommand != nullptr) {
+              onLedCommand(state.ledState);
+            }
+          }
         }
       }
     }

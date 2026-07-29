@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://marveluzz-hub.internal/schemas/command_dispatch.json",
+  "title": "Downlink Control Command Dispatch Schema",
+  "description": "JSON Schema for command dispatch requests issued by the Web Dashboard.",
+  "type": "object",
+  "required": ["deviceId", "target", "action"],
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Target IoT device UUID."
+    },
+    "target": {
+      "type": "string",
+      "description": "Target widget or actuator identifier (e.g., led_toggle)."
+    },
+    "action": {
+      "type": "string",
+      "description": "Action type (e.g., toggle, set_value)."
+    },
+    "value": {
+      "description": "Optional payload value associated with the action."
+    }
+  }
+}

@@ -82,7 +82,12 @@ marveluzz-hub/
 │       ├── esp32_temperature_sensor.ino   # Sketch name matches folder (Arduino IDE requirement)
 │       ├── TelemetryLogic.h
 │       ├── certificates.h
-│       └── README.md
+├── schemas/
+│   ├── ui_layout_registration.json  # JSON Schema (draft-07) for UI layout registration
+│   ├── telemetry_uplink.json        # JSON Schema (draft-07) for telemetry ingest uplink
+│   ├── telemetry_response.json      # JSON Schema (draft-07) for telemetry ingest response
+│   ├── command_dispatch.json        # JSON Schema (draft-07) for control command dispatch
+│   └── realtime_event.json          # JSON Schema (draft-07) for Supabase Realtime WebSocket events
 └── tests/
     ├── local_test.ts       # Local test suite (21 unit & mock tests)
     ├── auth_test.ts        # GitHub OAuth & Mock Auth integration test suite (2 tests)

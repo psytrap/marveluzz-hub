@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://marveluzz-hub.internal/schemas/telemetry_response.json",
+  "title": "Telemetry Ingest Response Payload Schema",
+  "description": "JSON Schema for the server response returned upon processing ingest_telemetry.",
+  "type": "object",
+  "required": ["success", "viewers_active", "commands"],
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "Indicates whether telemetry ingestion was successful."
+    },
+    "viewers_active": {
+      "type": "boolean",
+      "description": "Presence state indicating if dashboard users are actively watching this device panel."
+    },
+    "commands": {
+      "type": "array",
+      "description": "List of pending fallback command objects queued for execution.",
+      "items": {
+        "type": "object",
+        "required": ["target", "action"],
+        "properties": {
+          "command_id": { "type": ["string", "null"], "format": "uuid" },
+          "target": { "type": ["string", "null"] },
+          "action": { "type": ["string", "null"] },
+          "value": {}
+        }
+      }
+    }
+  }
+}

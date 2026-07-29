@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.25";
+const APP_VERSION = "1.0.26";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -428,7 +428,11 @@ async function handler(req: Request): Promise<Response> {
           if (!sseClients.has(deviceId)) {
             sseClients.set(deviceId, new Set());
           }
-          sseClients.get(deviceId)!.add(controller);
+          const clientSet = sseClients.get(deviceId)!;
+          clientSet.add(controller);
+          if (mockDb) {
+            mockDb.updateDeviceViewersActive(deviceId, true);
+          }
 
           // Initial connection handshake
           const encoder = new TextEncoder();
@@ -440,12 +444,21 @@ async function handler(req: Request): Promise<Response> {
               controller.enqueue(encoder.encode(`: ping\n\n`));
             } catch (_) {
               clearInterval(intervalId);
-              sseClients.get(deviceId)?.delete(controller);
+              clientSet.delete(controller);
+              if (mockDb) {
+                mockDb.updateDeviceViewersActive(deviceId, clientSet.size > 0);
+              }
             }
           }, 15000);
         },
         cancel() {
           if (intervalId) clearInterval(intervalId);
+          if (sseClients.has(deviceId)) {
+            const clientSet = sseClients.get(deviceId)!;
+            if (mockDb) {
+              mockDb.updateDeviceViewersActive(deviceId, clientSet.size > 0);
+            }
+          }
         }
       });
 
@@ -569,8 +582,11 @@ async function handler(req: Request): Promise<Response> {
 
       broadcastSseEvent(deviceId, "telemetry", { deviceId, data });
 
+      const isViewersActive = mockDb ? (mockDb.devices.get(deviceId)?.viewers_active ?? false) : false;
+
       return new Response(JSON.stringify({
         success: true,
+        viewers_active: isViewersActive,
         commands: executedCommands
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }

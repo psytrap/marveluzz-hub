@@ -1,6 +1,6 @@
 # Specification Document: Marveluzz Hub
 
-This project is the official successor to [`every-panel spec.md`](file:///home/mik/Documents/Bastel/2023-/every-panel/every-panel/spec.md).
+This project is the official successor to `every-panel spec.md`.
 
 ---
 
@@ -414,7 +414,36 @@ sequenceDiagram
 
 ---
 
-### 2.7 Entity-Relationship (ER) Schema
+### 2.7 Message Definition Specifications
+
+`Marveluzz Hub` enforces strict JSON message payload schemas across all transport layers (PostgREST HTTP RPCs, Standalone Edge REST APIs, and Supabase Realtime WebSockets). Formal JSON Schema (draft-07) specifications are maintained in the [`schemas/`](schemas) directory:
+
+| Message Type | JSON Schema Reference | Purpose |
+| :--- | :--- | :--- |
+| **Dynamic UI Layout Registration** | [ui_layout_registration.json](schemas/ui_layout_registration.json) | Declares device panel title, flow layout, and dynamic widget definitions (`register_ui_definition`) |
+| **Telemetry Uplink** | [telemetry_uplink.json](schemas/telemetry_uplink.json) | Periodic telemetry data payload posted by IoT nodes (`ingest_telemetry`) |
+| **Telemetry Ingest Response** | [telemetry_response.json](schemas/telemetry_response.json) | Server response envelope containing `viewers_active` presence and fallback commands |
+| **Downlink Command Dispatch** | [command_dispatch.json](schemas/command_dispatch.json) | Control command dispatch payload issued by Web Dashboard |
+| **Realtime WebSocket Event** | [realtime_event.json](schemas/realtime_event.json) | Instant <5ms command push event delivered over Supabase Realtime WebSockets |
+
+#### 1. Dynamic UI Layout Registration Schema (`p_layout_def`)
+Dispatched by IoT nodes via `POST /rest/v1/rpc/register_ui_definition` or `POST /api/device/ui_definition` to declare header metadata and dynamic widget cards. See schema specification: [ui_layout_registration.json](schemas/ui_layout_registration.json).
+
+#### 2. Telemetry Uplink Payload Schema (`p_telemetry_data`)
+Dispatched by IoT nodes periodically (5s Fast Mode when `viewers_active = true` / 30s Power-Save Mode when `viewers_active = false`) via `POST /rest/v1/rpc/ingest_telemetry` or `POST /api/device/telemetry`. See schema specification: [telemetry_uplink.json](schemas/telemetry_uplink.json).
+
+#### 3. Telemetry Ingest Response Payload Schema
+Returned by the server in response to telemetry ingestion. Contains `viewers_active` boolean presence state to drive adaptive device stream cadence, along with any queued fallback commands. See schema specification: [telemetry_response.json](schemas/telemetry_response.json).
+
+#### 4. Downlink Control Command Dispatch Schema
+Dispatched by the Web Dashboard via `POST /api/device/command` to issue hardware control instructions to an IoT node. See schema specification: [command_dispatch.json](schemas/command_dispatch.json).
+
+#### 5. Supabase Realtime WebSocket Event Schema (`postgres_changes`)
+Instant push-down frame delivered to IoT nodes over WebSockets (<5ms latency) when a command record is inserted into `public.device_commands`. See schema specification: [realtime_event.json](schemas/realtime_event.json).
+
+---
+
+### 2.8 Entity-Relationship (ER) Schema
 
 ```mermaid
 erDiagram
@@ -556,4 +585,4 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 ## 7. Future Enhancements & TODO Roadmap
 
 All active roadmap tasks and future enhancements are maintained in the single project backlog file:
-👉 **[TODO.md](file:///home/mik/Documents/Bastel/2023-/marveluzz-hub/marveluzz-hub/TODO.md)**
+👉 **[TODO.md](TODO.md)**
