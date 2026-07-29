@@ -7,14 +7,12 @@ async function loadDeviceDirectory() {
   const statusBadge = document.getElementById("status-badge");
   const controlBtn = document.getElementById("btn-control");
   const navDirBtn = document.getElementById("nav-directory-btn");
-  const navManageBtn = document.getElementById("nav-manage-btn");
 
   if (titleEl) titleEl.textContent = "Device Directory";
   if (uuidDisplay) uuidDisplay.style.display = "none";
   if (statusBadge) statusBadge.style.display = "none";
   if (controlBtn) controlBtn.style.display = "none";
   if (navDirBtn) navDirBtn.style.display = "none";
-  if (navManageBtn) navManageBtn.style.display = "none";
 
   if (!container) return;
 

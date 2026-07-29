@@ -9,7 +9,10 @@ async function loadDeviceManagementPage() {
   const navDirBtn = document.getElementById("nav-directory-btn");
 
   const urlParams = new URLSearchParams(window.location.search);
-  const deviceId = urlParams.get("device_id");
+  let deviceId = urlParams.get("device_id");
+  if (!deviceId && window.currentDeviceId) {
+    deviceId = window.currentDeviceId;
+  }
 
   if (!deviceId) {
     if (container) {
@@ -32,8 +35,8 @@ async function loadDeviceManagementPage() {
   if (controlBtn) controlBtn.style.display = "none";
   if (navDirBtn) {
     navDirBtn.style.display = "inline-block";
-    navDirBtn.href = `/devices?device_id=${deviceId}`;
-    navDirBtn.textContent = "← Back to Device Panel";
+    navDirBtn.href = "/";
+    navDirBtn.textContent = "Device Directory";
   }
 
   if (!container) return;

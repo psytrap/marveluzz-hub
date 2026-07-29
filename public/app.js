@@ -28,6 +28,7 @@ async function initApp() {
   if (hasDeviceIdParam) {
     currentDeviceId = urlParams.get("device_id");
   }
+  window.currentDeviceId = currentDeviceId;
 
   try {
     const configRes = await fetch("/api/config");
@@ -50,14 +51,16 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
-    const isManagePage = window.location.pathname.startsWith("/manage") ||
-                         window.location.pathname.startsWith("/stats") ||
-                         window.location.pathname.startsWith("/devices/manage") ||
-                         window.location.pathname.startsWith("/devices/stats");
+    const isManagePage = window.location.pathname.includes("manage") ||
+                         window.location.pathname.includes("stats") ||
+                         urlParams.get("page") === "manage" ||
+                         urlParams.get("view") === "manage";
 
     if (isManagePage) {
       if (typeof loadDeviceManagementPage === "function") {
         loadDeviceManagementPage();
+      } else {
+        console.error("loadDeviceManagementPage function missing!");
       }
     } else if (!hasDeviceIdParam) {
       if (typeof loadDeviceDirectory === "function") {
@@ -68,7 +71,6 @@ async function initApp() {
       const statusBadge = document.getElementById("status-badge");
       const uuidEl = document.getElementById("device-uuid-text");
       const navDirBtn = document.getElementById("nav-directory-btn");
-      const navManageBtn = document.getElementById("nav-manage-btn");
 
       if (uuidDisplay) uuidDisplay.style.display = "inline-flex";
       if (statusBadge) statusBadge.style.display = "inline-flex";
@@ -77,11 +79,6 @@ async function initApp() {
         navDirBtn.style.display = "inline-block";
         navDirBtn.textContent = "Device Directory";
         navDirBtn.setAttribute("href", "/");
-      }
-      if (navManageBtn) {
-        navManageBtn.style.display = "inline-block";
-        navManageBtn.textContent = "Manage Device";
-        navManageBtn.setAttribute("href", `/manage?device_id=${currentDeviceId}`);
       }
 
       if (typeof loadInitialData === "function") loadInitialData();
@@ -176,7 +173,14 @@ function updateStatusBadge(status, customLabel = null) {
   textEl.textContent = labelText;
 
   if (controlBtn) {
-    if (status === "control") {
+    const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
+    const isManagePage = window.location.pathname.includes("manage") ||
+                         window.location.pathname.includes("stats") ||
+                         (new URLSearchParams(window.location.search)).get("view") === "manage";
+
+    if (isDirectoryPage || isManagePage) {
+      controlBtn.style.display = "none";
+    } else if (status === "control") {
       controlBtn.style.display = "inline-block";
       if (isControlAcquired) {
         controlBtn.className = "btn-action active-lease";
