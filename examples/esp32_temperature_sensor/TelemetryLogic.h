@@ -70,21 +70,34 @@ public:
     return viewersActive ? 5000 : 30000;
   }
 
-  // Builds Phoenix WebSocket Join frame payload for Supabase Realtime channel subscription
+  // Builds Phoenix WebSocket Join frame payload for Supabase Realtime channel subscription (INSERT-only filter)
   static String buildWsJoinPayload(const String& deviceId) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
     JsonDocument doc;
 #else
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
 #endif
 
     doc["topic"] = "realtime:public:device_commands:device_id=eq." + deviceId;
     doc["event"] = "phx_join";
+
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-    doc["payload"].to<JsonObject>();
+    JsonObject payload = doc["payload"].to<JsonObject>();
+    JsonObject config = payload["config"].to<JsonObject>();
+    JsonArray postgresChanges = config["postgres_changes"].to<JsonArray>();
+    JsonObject change = postgresChanges.add<JsonObject>();
 #else
-    doc.createNestedObject("payload");
+    JsonObject payload = doc.createNestedObject("payload");
+    JsonObject config = payload.createNestedObject("config");
+    JsonArray postgresChanges = config.createNestedArray("postgres_changes");
+    JsonObject change = postgresChanges.createNestedObject();
 #endif
+
+    change["event"] = "INSERT";
+    change["schema"] = "public";
+    change["table"] = "device_commands";
+    change["filter"] = "device_id=eq." + deviceId;
+
     doc["ref"] = "1";
 
     String output;
@@ -222,11 +235,11 @@ public:
     DeserializationError error = deserializeJson(doc, jsonResponse);
     if (error) return;
 
-    // Handle WebSocket command push event payload (INSERT / UPDATE / postgres_changes)
+    // Handle WebSocket command push event payload (Strict Exclusive INSERT Downlink)
     String eventStr = doc["event"] | "";
     String payloadType = doc["payload"]["type"] | "";
 
-    if (eventStr == "INSERT" || eventStr == "UPDATE" || eventStr == "postgres_changes" || payloadType == "INSERT" || payloadType == "UPDATE") {
+    if (eventStr == "INSERT" || payloadType == "INSERT") {
       JsonObject payloadRecord = doc["payload"]["record"].as<JsonObject>();
       if (payloadRecord.isNull()) {
         payloadRecord = doc["payload"]["data"]["record"].as<JsonObject>();
@@ -239,7 +252,7 @@ public:
           return;
         }
 
-        // Defense 2: Ignore UPDATE WebSocket frames where status is not 'pending' (prevents double execution)
+        // Defense 2: Ensure command status is 'pending'
         const char* cmdStatus = payloadRecord["status"];
         if (cmdStatus != nullptr && String(cmdStatus) != "pending") {
           return;
@@ -261,6 +274,7 @@ public:
                          ? payloadRecord["value"].as<bool>()
                          : !state.ledState;
             state.ledState = val;
+            Serial.printf("⚡ Instant WebSocket Command Received (INSERT) -> Target: '%s', Action: '%s'\n", targetStr.c_str(), actionStr.c_str());
             if (onLedCommand != nullptr) {
               onLedCommand(state.ledState);
             }

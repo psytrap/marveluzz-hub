@@ -63,7 +63,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       }
       break;
     case WStype_TEXT:
-      Serial.printf("⚡ Instant WebSocket Push Received: %s\n", payload);
       TelemetryLogic::parseIngestResponse(String((char*)payload), cfgDeviceId, deviceState, applyLedHardwareState);
       break;
     default:

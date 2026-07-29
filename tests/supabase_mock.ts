@@ -113,21 +113,13 @@ export class MockSupabaseEngine {
       created_at: now
     });
 
-    const executedCommands: Array<{ command_id: string; target: string; action: string; value: unknown; viewers_active: boolean }> = [];
-    for (const cmd of this.deviceCommands.values()) {
-      if (cmd.device_id === deviceId && cmd.status === "pending") {
-        cmd.status = "executed";
-        executedCommands.push({
-          command_id: cmd.id,
-          target: cmd.target,
-          action: cmd.action,
-          value: cmd.value,
-          viewers_active: dev.viewers_active
-        });
-      }
-    }
-
-    return executedCommands;
+    return [{
+      command_id: null,
+      target: null,
+      action: null,
+      value: null,
+      viewers_active: dev.viewers_active
+    }];
   }
 
   public updateDeviceViewersActive(deviceId: string, active: boolean) {

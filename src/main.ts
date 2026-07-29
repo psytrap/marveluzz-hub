@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.31";
+const APP_VERSION = "1.0.32";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -606,11 +606,12 @@ async function handler(req: Request): Promise<Response> {
       broadcastSseEvent(deviceId, "telemetry", { deviceId, data });
 
       const isViewersActive = mockDb ? (mockDb.devices.get(deviceId)?.viewers_active ?? false) : false;
+      const validCommands = (executedCommands || []).filter((c: any) => c && c.command_id !== null && c.target !== null);
 
       return new Response(JSON.stringify({
         success: true,
         viewers_active: isViewersActive,
-        commands: executedCommands
+        commands: validCommands
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });

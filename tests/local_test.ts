@@ -127,19 +127,18 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     assertEquals(history[0].data.temperature, 24.8);
   });
 
-  await t.step("Dispatches pending commands via telemetry ingest RPC", () => {
+  await t.step("Enforces strict exclusive WebSocket command push (HTTP ingest returns 0 piggybacked commands)", () => {
     const db = new MockSupabaseEngine();
 
     const cmdId = db.queueCommand(MOCK_DEVICE_ID, "fan_toggle", "set_value", true);
-    const executedCmds = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 25.1 });
+    const telemetryResult = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 25.1 });
 
-    assertEquals(executedCmds.length, 1);
-    assertEquals(executedCmds[0].command_id, cmdId);
-    assertEquals(executedCmds[0].target, "fan_toggle");
-    assertEquals(executedCmds[0].value, true);
+    // HTTP telemetry ingest must NOT return piggybacked commands
+    const validCommands = telemetryResult.filter(c => c.command_id !== null);
+    assertEquals(validCommands.length, 0);
 
     const cmdRecord = db.deviceCommands.get(cmdId);
-    assertEquals(cmdRecord?.status, "executed");
+    assertEquals(cmdRecord?.status, "pending");
   });
 
   await t.step("Staging test for viewers_active state transitions & WebSocket command dispatch", () => {
@@ -384,12 +383,10 @@ Deno.test("Local Engine: Concurrency Locks & Multi-Device Security Isolation", a
     const cmdAId = db.queueCommand(deviceAId, "irrigation_pump", "toggle", true);
 
     const cmdsForB = db.ingestTelemetry(deviceBId, deviceBKey, { voltage: 48.5 });
-    assertEquals(cmdsForB.length, 0);
+    assertEquals(cmdsForB.filter(c => c.command_id !== null).length, 0);
 
     const cmdsForA = db.ingestTelemetry(deviceAId, deviceAKey, { temp: 22.0 });
-    assertEquals(cmdsForA.length, 1);
-    assertEquals(cmdsForA[0].command_id, cmdAId);
-    assertEquals(cmdsForA[0].target, "irrigation_pump");
+    assertEquals(cmdsForA.filter(c => c.command_id !== null).length, 0);
   });
 
   await t.step("Enforces per-device control lease isolation and automatic release on page leave", () => {

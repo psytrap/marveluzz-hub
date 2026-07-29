@@ -8,7 +8,7 @@ const DEFAULT_DEVICE_ID = Deno.env.get("EMULATOR_DEVICE_ID") || Deno.env.get("TE
 const DEFAULT_DEVICE_KEY = Deno.env.get("EMULATOR_DEVICE_KEY") || Deno.env.get("TEST_DEVICE_KEY") || "secret_passcode_123";
 
 // Kept in sync with APP_VERSION in src/main.ts via `deno task uprev`
-const EMULATOR_VERSION = "1.0.30";
+const EMULATOR_VERSION = "1.0.31";
 
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="en">
@@ -748,12 +748,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         if (isSuccess) {
           log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, LED: " + (ledVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
-
-          if (commandList && commandList.length > 0) {
-            commandList.forEach(cmd => {
-              executeIncomingCommand(cmd, "HTTP Ingest Piggyback Fallback");
-            });
-          }
         } else {
           log("❌ Telemetry Ingest Error: " + (data.error || "Failed"), "Error");
         }
