@@ -7,6 +7,9 @@ const DEFAULT_ANON_KEY = Deno.env.get("EMULATOR_ANON_KEY") || Deno.env.get("SUPA
 const DEFAULT_DEVICE_ID = Deno.env.get("EMULATOR_DEVICE_ID") || Deno.env.get("TEST_DEVICE_ID") || "32323232-3232-4232-8232-28c13340c86c";
 const DEFAULT_DEVICE_KEY = Deno.env.get("EMULATOR_DEVICE_KEY") || Deno.env.get("TEST_DEVICE_KEY") || "secret_passcode_123";
 
+// Kept in sync with APP_VERSION in src/main.ts via `deno task uprev`
+const EMULATOR_VERSION = "1.0.24";
+
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -317,10 +320,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
         </div>
 
         <div class="form-group">
-          <label>Desk Fan Switch Relay</label>
+          <label>LED Output Control</label>
           <div class="knob-row">
-            <span>Fan Status</span>
-            <input type="checkbox" id="knob-fan" style="width:20px; height:20px; cursor:pointer;" onchange="updateFanVal(this.checked)">
+            <span>LED State</span>
+            <input type="checkbox" id="knob-led" style="width:20px; height:20px; cursor:pointer;" onchange="updateLedVal(this.checked)">
           </div>
         </div>
 
@@ -367,7 +370,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let startTime = Date.now();
 
     let tempVal = 24.5;
-    let fanVal = false;
+    let ledVal = false;
     let hasFault = false;
     let autoStreamActive = true;
     let viewersActive = true;
@@ -392,19 +395,14 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
       if (cmd.target === "led_toggle" || cmd.target === "fan_toggle") {
         if (cmd.action === "toggle") {
-          fanVal = !fanVal;
+          ledVal = !ledVal;
         } else if (cmd.action === "set_value") {
-          fanVal = Boolean(cmd.value);
+          ledVal = Boolean(cmd.value);
         } else {
-          fanVal = !fanVal;
+          ledVal = !ledVal;
         }
-        const knobFan = document.getElementById("knob-fan");
-        if (knobFan) knobFan.checked = fanVal;
-      } else if (cmd.target === "fan_speed") {
-        const speedVal = Number(cmd.value);
-        if (!isNaN(speedVal)) {
-          log("Fan Speed Target Set -> " + speedVal + "%", "Command");
-        }
+        const knobLed = document.getElementById("knob-led");
+        if (knobLed) knobLed.checked = ledVal;
       } else if (cmd.target === "viewers_active") {
         toggleViewersActive(!!cmd.value);
         const knobViewers = document.getElementById("knob-viewers");
@@ -465,10 +463,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
       sendTelemetryPacket();
     }
 
-    function updateFanVal(checked) {
-      console.log("[BTN] updateFanVal clicked, checked=", checked);
-      fanVal = !!checked;
-      log("Desk Fan Switch manually set to: " + (fanVal ? "ON" : "OFF"), "Info");
+    function updateLedVal(checked) {
+      console.log("[BTN] updateLedVal clicked, checked=", checked);
+      ledVal = !!checked;
+      log("LED manually set to: " + (ledVal ? "ON" : "OFF"), "Info");
       sendTelemetryPacket();
     }
 
@@ -551,7 +549,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
         type: "layout",
         layout: [
           { type: "number", properties: { label: "DS18B20 Temperature (°C)", id: "temperature", value: String(tempVal), readonly: "true" } },
-          { type: "button", properties: { label: "Status LED Light", id: "led_toggle", value: String(fanVal) } },
+          { type: "button", properties: { label: "Toggle LED", id: "led_toggle", value: String(ledVal) } },
+          { type: "indicator", properties: { label: "LED State", id: "led_state", value: ledVal ? "ON" : "OFF", readonly: "true" } },
           { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s", readonly: "true" } }
         ]
       };
@@ -707,7 +706,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         const telemetryData = {
           temperature: Number(tempVal.toFixed(1)),
-          led_toggle: fanVal,
+          led_toggle: ledVal,
+          led_state: ledVal ? "ON" : "OFF",
           uptime: uptimeSec + "s",
           viewers_active: viewersActive,
           power_save_mode: !viewersActive,
@@ -747,7 +747,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
 
         if (isSuccess) {
-          log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, Fan: " + (fanVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
+          log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, LED: " + (ledVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
 
           if (commandList && commandList.length > 0) {
             commandList.forEach(cmd => {
@@ -807,7 +807,7 @@ async function handler(req: Request): Promise<Response> {
 const STARTED_AT = new Date().toLocaleString("en-GB", { hour12: false });
 console.log(`
 =======================================================
-🤖 MARVELUZZ IOT DEVICE EMULATOR (v1.0.13)
+🤖 MARVELUZZ IOT DEVICE EMULATOR (v${EMULATOR_VERSION})
 ⏱  STARTED AT          : ${STARTED_AT}
 =======================================================
 🌐 DEFAULT TARGET URL : ${DEFAULT_HUB_URL}

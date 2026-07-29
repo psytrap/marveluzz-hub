@@ -1,11 +1,20 @@
 {
-  "title": "ESP32 Environmental & Power Station",
+  "title": "ESP32 Environmental & Field Station",
   "type": "layout",
   "properties": {
     "id": "layout_rows",
     "flow": "row"
   },
   "layout": [
+    {
+      "type": "indicator",
+      "properties": {
+        "label": "Node Status",
+        "id": "status_text",
+        "value": "Online",
+        "unit": ""
+      }
+    },
     {
       "type": "number",
       "properties": {
@@ -16,31 +25,20 @@
       }
     },
     {
-      "type": "indicator",
-      "properties": {
-        "label": "System Status Readout",
-        "id": "status_text",
-        "value": "Running Normally",
-        "unit": ""
-      }
-    },
-    {
-      "type": "range",
-      "properties": {
-        "label": "Cooling Fan Speed Target",
-        "id": "fan_speed",
-        "value": "75",
-        "min": "0",
-        "max": "100",
-        "unit": "%"
-      }
-    },
-    {
       "type": "button",
       "properties": {
-        "label": "Toggle Desk Fan Relay",
-        "id": "fan_toggle",
+        "label": "Toggle LED",
+        "id": "led_toggle",
         "value": "false"
+      }
+    },
+    {
+      "type": "indicator",
+      "properties": {
+        "label": "LED State",
+        "id": "led_state",
+        "value": "OFF",
+        "readonly": "true"
       }
     },
     {

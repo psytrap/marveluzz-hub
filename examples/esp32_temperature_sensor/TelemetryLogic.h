@@ -140,20 +140,29 @@ public:
     prop2["id"] = "temperature";
     prop2["readonly"] = "true";
 
-    // 3. Status LED Light Switch Button
+    // 3. Toggle LED Button
     JsonObject item3 = layout.add<JsonObject>();
     item3["type"] = "button";
     JsonObject prop3 = item3["properties"].to<JsonObject>();
-    prop3["label"] = "Status LED Light";
+    prop3["label"] = "Toggle LED";
     prop3["id"] = "led_toggle";
 
-    // 4. Device Uptime Text
+    // 4. LED State Feedback Indicator
     JsonObject item4 = layout.add<JsonObject>();
-    item4["type"] = "text";
+    item4["type"] = "indicator";
     JsonObject prop4 = item4["properties"].to<JsonObject>();
-    prop4["label"] = "Device Uptime";
-    prop4["id"] = "uptime";
+    prop4["label"] = "LED State";
+    prop4["id"] = "led_state";
+    prop4["value"] = "OFF";
     prop4["readonly"] = "true";
+
+    // 5. Device Uptime Text
+    JsonObject item5 = layout.add<JsonObject>();
+    item5["type"] = "text";
+    JsonObject prop5 = item5["properties"].to<JsonObject>();
+    prop5["label"] = "Device Uptime";
+    prop5["id"] = "uptime";
+    prop5["readonly"] = "true";
 
     String output;
     serializeJson(doc, output);
@@ -181,6 +190,7 @@ public:
 
     telemetry["temperature"] = round(temp * 10.0) / 10.0;
     telemetry["led_toggle"] = ledState;
+    telemetry["led_state"] = ledState ? "ON" : "OFF";
     telemetry["uptime"] = formatUptime(uptimeSec);
     telemetry["viewers_active"] = viewersActive;
     telemetry["power_save_mode"] = !viewersActive;
