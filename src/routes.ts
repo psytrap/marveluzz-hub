@@ -533,13 +533,13 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // Wipe Device Storage Endpoint
-  if (pathname === "/api/devices/delete" && req.method === "POST") {
+  // Wipe Device Storage & Delete Device Record Endpoint
+  if ((pathname === "/api/devices/delete" || pathname === "/api/device/delete") && req.method === "POST") {
     const user = await getAuthenticatedUser();
     if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
 
     try {
-      const { deviceId } = await req.json();
+      const { deviceId, deleteRecord } = await req.json();
       if (!deviceId) return new Response(JSON.stringify({ error: "Missing deviceId" }), { status: 400 });
 
       if (supabase) {
@@ -547,9 +547,16 @@ export async function handleRequest(req: Request): Promise<Response> {
         await supabase.from("telemetry_latest").delete().eq("device_id", deviceId);
         await supabase.from("ui_definitions").delete().eq("device_id", deviceId);
         await supabase.from("device_commands").delete().eq("device_id", deviceId);
-        await supabase.from("devices").update({ status: "detached", controller_session_id: null }).eq("id", deviceId);
+        if (deleteRecord) {
+          await supabase.from("devices").delete().eq("id", deviceId);
+        } else {
+          await supabase.from("devices").update({ status: "detached", controller_session_id: null }).eq("id", deviceId);
+        }
       } else if (mockDb) {
         mockDb.wipeDeviceData(deviceId);
+        if (deleteRecord) {
+          mockDb.devices.delete(deviceId);
+        }
       }
       return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
     } catch (e: any) {

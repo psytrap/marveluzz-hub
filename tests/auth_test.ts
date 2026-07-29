@@ -264,6 +264,38 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       assertEquals(json2.viewers_active, false);
     });
 
+    await t.step("Device Management Danger Zone: POST /api/devices/delete with deleteRecord: false wipes storage but retains device", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const res = await fetch(`${baseUrl}/api/devices/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, deleteRecord: false })
+      });
+      assertEquals(res.status, 200);
+      const json = await res.json();
+      assertEquals(json.success, true);
+    });
+
+    await t.step("Device Management Danger Zone: POST /api/devices/delete with deleteRecord: true unregisters device record", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const res = await fetch(`${baseUrl}/api/devices/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, deleteRecord: true })
+      });
+      assertEquals(res.status, 200);
+      const json = await res.json();
+      assertEquals(json.success, true);
+
+      // Verify device directory list no longer contains the device
+      const listRes = await fetch(`${baseUrl}/api/devices`, {
+        headers: { "Cookie": `marveluzz_session=${activeSessionId}` }
+      });
+      const list = await listRes.json();
+      const exists = list.some((d: any) => d.deviceId === deviceId);
+      assertEquals(exists, false);
+    });
+
     await t.step("Logout routine invalidates active session and clears cookie", async () => {
       const logoutRes = await fetch(`${baseUrl}/logout`, {
         method: "GET",

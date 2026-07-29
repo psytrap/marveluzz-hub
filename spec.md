@@ -141,8 +141,11 @@ stateDiagram-v2
   * `POST /api/device/telemetry`: Validates secret key, updates `last_seen`, records latest telemetry snapshot, appends to historical log, and returns pending commands.
   * `POST /api/device/command`: Enqueues dashboard control commands for IoT nodes and broadcasts instant SSE `command` event.
   * `GET /api/devices`: Returns the list of registered devices, statuses, and registration timestamps.
-  * `GET /api/devices/stats`: Returns memory and history storage footprint metrics for a device.
-  * `POST /api/devices/delete`: Executes atomic device storage wipe.
+  * `GET /api/devices/stats` (or `/api/device/stats`): Returns storage footprint metrics, record counts, active retention TTL, masked secret key, and stored layout definition for a device.
+  * `POST /api/device/rotate_key`: Rotates the device secret key, rendering old keys invalid immediately.
+  * `POST /api/device/update_retention`: Updates the time-series history retention TTL policy (7, 14, 30, 90 days).
+  * `POST /api/device/purge_telemetry`: Purges all telemetry history logs for a specific device.
+  * `POST /api/devices/delete`: Executes storage wipe (`deleteRecord: false`) or complete device registration deletion (`deleteRecord: true`).
   * `GET /api/debug/memory`: Returns RSS memory usage, isolate uptime, active SSE connections, and database mode.
 
 #### 3. Supabase Storage & Realtime Engine
@@ -187,7 +190,7 @@ graph TD
 2. **Pattern B: Admin Pre-Shared Key (PSK) Provisioning**:
    * An administrator creates the device in the dashboard and flashes the provisioned `deviceId` and `deviceKey` directly into the microcontroller's non-volatile NVS / EEPROM flash memory.
 3. **Pattern C: Dynamic Secret Key Rotation**:
-   * Admins can regenerate a device's secret key at any time in `/devices/stats`, instantly invalidating compromised keys.
+   * Admins can regenerate a device's secret key at any time in `/manage?device_id=...`, instantly invalidating compromised keys.
 
 ---
 

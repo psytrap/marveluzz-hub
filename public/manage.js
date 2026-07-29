@@ -130,9 +130,10 @@ async function loadDeviceManagementPage() {
             ⚠️ Danger Zone
           </h3>
           <div style="display:flex; flex-direction:column; gap:10px; font-size:0.95rem; color:var(--text-secondary);">
-            <p style="font-size:0.85rem; margin:0;">Wiping device data will purge all layout definitions, telemetry records, and reset status to detached.</p>
-            <div style="margin-top:10px;">
-              <button id="btn-wipe-device" class="btn-action btn-danger" style="width:100%; font-weight:600;">Wipe Storage & Reset Device</button>
+            <p style="font-size:0.85rem; margin:0;">Wiping device data will purge all layout definitions and telemetry logs. Deleting the device record will unregister it completely.</p>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+              <button id="btn-wipe-device" class="btn-action" style="width:100%; background:rgba(231, 76, 60, 0.2); border:1px solid rgba(231, 76, 60, 0.5); color:#ff6b6b;">🧹 Wipe Storage Data</button>
+              <button id="btn-delete-device-record" class="btn-action btn-danger" style="width:100%; font-weight:600;">🗑️ Delete Device Record</button>
             </div>
           </div>
         </div>
@@ -215,22 +216,42 @@ async function loadDeviceManagementPage() {
     });
 
     document.getElementById("btn-wipe-device")?.addEventListener("click", async () => {
-      if (!confirm("CRITICAL WARNING: This will permanently wipe all telemetry history, layouts, and commands for this device. Proceed?")) return;
+      if (!confirm("Are you sure you want to wipe all telemetry history, layouts, and commands for this device?")) return;
       try {
         const r = await fetch("/api/devices/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceId })
+          body: JSON.stringify({ deviceId, deleteRecord: false })
         });
         const resData = await r.json();
         if (resData.success) {
           alert("Device storage wiped successfully.");
-          window.location.href = "/";
+          loadDeviceManagementPage();
         } else {
           alert(`Failed to wipe device: ${resData.error}`);
         }
       } catch (err) {
         alert("Network error wiping device.");
+      }
+    });
+
+    document.getElementById("btn-delete-device-record")?.addEventListener("click", async () => {
+      if (!confirm("CRITICAL WARNING: This will PERMANENTLY DELETE this device registration record and all associated telemetry. Proceed?")) return;
+      try {
+        const r = await fetch("/api/devices/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId, deleteRecord: true })
+        });
+        const resData = await r.json();
+        if (resData.success) {
+          alert("Device record deleted successfully.");
+          window.location.href = "/";
+        } else {
+          alert(`Failed to delete device: ${resData.error}`);
+        }
+      } catch (err) {
+        alert("Network error deleting device.");
       }
     });
 
