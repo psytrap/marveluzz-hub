@@ -30,10 +30,10 @@ async function initApp() {
 
     if (config.supabaseUrl && config.supabaseAnonKey) {
       supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-      setupRealtimeSubscriptions();
     } else {
       console.log("ℹ️ Running with Standalone Local Ingest Server.");
     }
+    setupRealtimeSubscriptions();
 
     if (config.disableAuth === false) {
       const logoutBtn = document.getElementById("logout-btn");
@@ -192,42 +192,87 @@ function toggleInputLockOverlay(isOwner) {
 // 3. Supabase Realtime Subscriptions
 // -------------------------------------------------------------
 function setupRealtimeSubscriptions() {
-  if (!supabaseClient) return;
-
-  const channel = supabaseClient
-    .channel('public:dashboard')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
-      if (payload.new && payload.new.id === currentDeviceId) {
-        lastSeenTimestamp = Date.now();
-        const serverSession = payload.new.controller_session_id;
-        if (serverSession === currentSessionId) {
-          isControlAcquired = true;
-          updateStatusBadge("control");
-        } else if (serverSession !== null && serverSession !== undefined) {
-          isControlAcquired = false;
-          updateStatusBadge("control");
-        } else {
-          isControlAcquired = false;
-          const newStatus = payload.new.status === "control" ? "live" : (payload.new.status || "live");
-          updateStatusBadge(newStatus);
+  if (supabaseClient) {
+    const channel = supabaseClient
+      .channel('public:dashboard')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+        if (payload.new && payload.new.id === currentDeviceId) {
+          lastSeenTimestamp = Date.now();
+          const serverSession = payload.new.controller_session_id;
+          if (serverSession === currentSessionId) {
+            isControlAcquired = true;
+            updateStatusBadge("control");
+          } else if (serverSession !== null && serverSession !== undefined) {
+            isControlAcquired = false;
+            updateStatusBadge("control");
+          } else {
+            isControlAcquired = false;
+            const newStatus = payload.new.status === "control" ? "live" : (payload.new.status || "live");
+            updateStatusBadge(newStatus);
+          }
         }
-      }
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
-      if (payload.new && payload.new.device_id === currentDeviceId) {
-        lastSeenTimestamp = Date.now();
-        updateTelemetryData(payload.new.data);
-      }
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ui_definitions' }, payload => {
-      if (payload.new && payload.new.device_id === currentDeviceId) {
-        lastSeenTimestamp = Date.now();
-        renderUIDefinition(payload.new.layout_def);
-      }
-    })
-    .subscribe();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'telemetry_latest' }, payload => {
+        if (payload.new && payload.new.device_id === currentDeviceId) {
+          lastSeenTimestamp = Date.now();
+          updateTelemetryData(payload.new.data);
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ui_definitions' }, payload => {
+        if (payload.new && payload.new.device_id === currentDeviceId) {
+          lastSeenTimestamp = Date.now();
+          renderUIDefinition(payload.new.layout_def);
+        }
+      })
+      .subscribe();
 
-  console.log("⚡ Supabase Realtime Subscribed for device:", currentDeviceId);
+    console.log("⚡ Supabase Realtime Subscribed for device:", currentDeviceId);
+  } else {
+    // Edge Gateway / Standalone Local SSE Stream Listener (Option 1)
+    try {
+      const sseSource = new EventSource(`/api/device/events?deviceId=${encodeURIComponent(currentDeviceId)}`);
+      sseSource.addEventListener("telemetry", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.data) {
+            lastSeenTimestamp = Date.now();
+            updateTelemetryData(data.data);
+          }
+        } catch (_) {}
+      });
+      sseSource.addEventListener("ui_definition", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.layoutDef) {
+            lastSeenTimestamp = Date.now();
+            renderUIDefinition(data.layoutDef);
+          }
+        } catch (_) {}
+      });
+      sseSource.addEventListener("device_status", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.status) {
+            lastSeenTimestamp = Date.now();
+            const serverSession = data.controller_session_id;
+            if (serverSession === currentSessionId) {
+              isControlAcquired = true;
+              updateStatusBadge("control");
+            } else if (serverSession !== null && serverSession !== undefined) {
+              isControlAcquired = false;
+              updateStatusBadge("control");
+            } else {
+              isControlAcquired = false;
+              updateStatusBadge(data.status);
+            }
+          }
+        } catch (_) {}
+      });
+      console.log("⚡ Edge Gateway SSE Stream Subscribed for device:", currentDeviceId);
+    } catch (err) {
+      console.warn("SSE Setup warning:", err);
+    }
+  }
 }
 
 // -------------------------------------------------------------
@@ -434,6 +479,34 @@ async function toggleControlLease() {
     console.error("Failed to toggle control lease:", e);
   }
 }
+
+// Auto-Release Control Lease on Page Unload / Navigation / Tab Switch
+function releaseControlLeaseOnLeave() {
+  if (isControlAcquired && currentDeviceId) {
+    const payload = JSON.stringify({
+      deviceId: currentDeviceId,
+      target: "release_lease",
+      action: "release",
+      value: currentSessionId
+    });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon("/api/device/command", blob);
+    } else {
+      fetch("/api/device/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true
+      });
+    }
+    isControlAcquired = false;
+  }
+}
+
+window.addEventListener("beforeunload", releaseControlLeaseOnLeave);
+window.addEventListener("pagehide", releaseControlLeaseOnLeave);
 
 async function sendControlCommand(target, action, value) {
   try {

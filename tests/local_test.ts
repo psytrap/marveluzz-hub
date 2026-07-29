@@ -319,6 +319,37 @@ Deno.test("Local Engine: Concurrency Locks & Multi-Device Security Isolation", a
     assertEquals(cmdsForA[0].command_id, cmdAId);
     assertEquals(cmdsForA[0].target, "irrigation_pump");
   });
+
+  await t.step("Enforces per-device control lease isolation and automatic release on page leave", () => {
+    const db = new MockSupabaseEngine();
+    const devAlphaId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    const devBetaId = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
+    const sessionUser = "user_session_999";
+
+    db.seedDevice(devAlphaId, "key_a", "Node Alpha");
+    db.seedDevice(devBetaId, "key_b", "Node Beta");
+
+    db.ingestTelemetry(devAlphaId, "key_a", { temp: 20.0 });
+    db.ingestTelemetry(devBetaId, "key_b", { temp: 21.0 });
+
+    // 1. User acquires lease on Node Alpha
+    const acquireAlpha = db.acquireControlLease(devAlphaId, sessionUser);
+    assertEquals(acquireAlpha, true);
+    assertEquals(db.devices.get(devAlphaId)?.status, "control");
+    assertEquals(db.devices.get(devAlphaId)?.controller_session_id, sessionUser);
+
+    // 2. Node Beta control state MUST remain un-leased ("live" / null)
+    assertEquals(db.devices.get(devBetaId)?.status, "live");
+    assertEquals(db.devices.get(devBetaId)?.controller_session_id, null);
+
+    // 3. User navigates away / unloads page for Node Alpha -> triggers releaseControlLease
+    const releaseAlpha = db.releaseControlLease(devAlphaId, sessionUser);
+    assertEquals(releaseAlpha, true);
+
+    // 4. Verify Node Alpha lease is cleanly released back to "live" state
+    assertEquals(db.devices.get(devAlphaId)?.status, "live");
+    assertEquals(db.devices.get(devAlphaId)?.controller_session_id, null);
+  });
 });
 
 Deno.test("Local Engine: Schema Parity & Session Unit Tests", async (t) => {

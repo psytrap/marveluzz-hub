@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.14";
+const APP_VERSION = "1.0.15";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -518,29 +518,37 @@ async function handler(req: Request): Promise<Response> {
       }
 
       if (target === "acquire_lease") {
+        let ok = false;
         if (supabase) {
           const { error } = await supabase
             .from("devices")
             .update({ status: "control", controller_session_id: String(value) })
             .eq("id", deviceId);
-          return new Response(JSON.stringify({ success: !error }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          ok = !error;
         } else if (mockDb) {
-          const ok = mockDb.acquireControlLease(deviceId, String(value));
-          return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          ok = mockDb.acquireControlLease(deviceId, String(value));
         }
+        if (ok) {
+          broadcastSseEvent(deviceId, "device_status", { deviceId, status: "control", controller_session_id: String(value) });
+        }
+        return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (target === "release_lease") {
+        let ok = false;
         if (supabase) {
           const { error } = await supabase
             .from("devices")
             .update({ status: "live", controller_session_id: null })
             .eq("id", deviceId);
-          return new Response(JSON.stringify({ success: !error }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          ok = !error;
         } else if (mockDb) {
-          const ok = mockDb.releaseControlLease(deviceId, String(value));
-          return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          ok = mockDb.releaseControlLease(deviceId, String(value));
         }
+        if (ok) {
+          broadcastSseEvent(deviceId, "device_status", { deviceId, status: "live", controller_session_id: null });
+        }
+        return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       let commandId: string = crypto.randomUUID();

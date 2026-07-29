@@ -204,58 +204,63 @@ graph TD
 
 ### 2.6 Telemetry Ingest & Command Dispatch Sequence
 
-#### Sequence Diagram 1: 100% Direct-to-Supabase Communication Sequence (Production Mode)
+#### Sequence Diagram 1: Decoupled Parallel Dual-Channel Communication Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Node as "IoT Node / ESP32"
-    participant PostgREST as "Supabase PostgREST Gateway"
-    participant DB as "Supabase PostgreSQL DB"
-    participant Realtime as "Supabase Realtime Engine"
+    participant Gateway as "Supabase PostgREST / Edge Gateway"
+    participant DB as "Supabase DB / Local Mock Engine"
+    participant PushChannel as "Realtime Engine / SSE Broadcaster"
     participant Dashboard as "Marveluzz Web Dashboard"
 
-    Note over Node: Node connects WebSocket directly to Supabase Realtime
-    Node->>Realtime: Connect wss://<project-id>.supabase.co/realtime/v1/websocket
-    Realtime-->>Node: WebSocket Connected (Subscribed to device_commands)
+    Note over Node, PushChannel: INITIALIZATION & HANDSHAKE
+    Node->>Gateway: POST /api/device/ui_definition (Register Dynamic Layout)
+    Node->>PushChannel: Open Persistent Push Connection (WebSocket / SSE Stream)
+    PushChannel-->>Node: Channel Active (Subscribed to device_commands)
 
-    Note over Node: UPLINK: IoT Node posts telemetry directly to Supabase
-    Node->>PostgREST: POST /rest/v1/rpc/ingest_telemetry (deviceId, deviceKey, data)
-    PostgREST->>DB: Execute ingest_telemetry() SQL Procedure
-    DB-->>Node: HTTP 200 OK { success: true }
-    DB->>Realtime: WAL Change Broadcast (telemetry_latest UPDATE)
-    Realtime-->>Dashboard: Stream live telemetry update over WebSocket
-
-    Note over Dashboard: DOWNLINK: User clicks button on Web Dashboard
-    Dashboard->>PostgREST: POST /rest/v1/device_commands (status: 'pending')
-    PostgREST->>DB: INSERT INTO device_commands (target: fan_toggle, value: true)
-    
-    rect rgb(30, 40, 60)
-        Note over Realtime: INSTANT COMMAND PUSH DOWN:
-        DB->>Realtime: Write-Ahead Log (WAL) Change Event (INSERT device_commands)
-        Realtime-->>Node: Direct WebSocket PUSH DOWN (<5ms): {"target":"fan_toggle","value":true}
+    par CHANNEL B: Asynchronous Uplink Telemetry Cadence Stream (10s Default / 5s Fast)
+        loop Background Telemetry Cadence (Every 10s / 5s)
+            Node->>Gateway: POST Telemetry Packet (temperature, status, uptime)
+            Gateway->>DB: Execute ingest_telemetry()
+            DB->>PushChannel: Broadcast telemetry_latest UPDATE
+            PushChannel-->>Dashboard: Stream live telemetry update to Dashboard UI
+        end
+    and CHANNEL A: Instant Downlink Command Push (<5ms, Completely Independent)
+        Note over Dashboard: User clicks action button on Web Dashboard
+        Dashboard->>Gateway: POST /api/device/command (target: fan_toggle, value: true)
+        Gateway->>DB: INSERT INTO device_commands (status: 'pending')
+        DB->>PushChannel: Change Event (INSERT device_commands)
+        rect rgb(30, 40, 60)
+            PushChannel-->>Node: INSTANT PUSH DOWN (<5ms): {"target":"fan_toggle","value":true}
+        end
+        Note over Node: Node receives push INSTANTLY & updates hardware relay (<5ms)!
+        Node->>Gateway: Immediate State Sync Telemetry POST (Reflects new state on Dashboard)
     end
-
-    Note over Node: IoT Node receives push DOWN instantly & flips hardware relay!
 ```
 
 ---
 
-#### 2.6.1 Command Sequence Strategy & Telemetry Cadence
+#### 2.6.1 Command Sequence Strategy & Dual-Channel Telemetry Architecture
 
-Marveluzz Hub employs a hybrid dual-channel strategy for low-latency command execution and bandwidth optimization:
+Marveluzz Hub employs a strict **decoupled dual-channel architecture** for low-latency command execution (<5ms) and bandwidth optimization:
 
-1. **Telemetry Transmission Cadence**:
+> ⚠️ **CRITICAL ARCHITECTURAL REQUIREMENT**: Instant Command Push Down and Telemetry Transmission MUST operate **in parallel and completely independently** on separate asynchronous event loops/threads. Command execution **MUST NOT** be blocked by, queued behind, or deferred until the next telemetry post interval!
+
+1. **Channel A: Instant Downlink Command Push (<5ms, Asynchronous Listener)**:
+   - **Direct Supabase Mode**: IoT nodes maintain a persistent WebSocket channel subscribed to `postgres_changes` on `device_commands` (`device_id = eq.<device_id>`).
+   - **Edge Gateway Mode**: IoT nodes open a persistent Server-Sent Events (SSE) HTTP stream to `GET /api/device/events?deviceId=<device_id>`.
+   - **Execution**: When a dashboard user triggers an action (e.g., toggling a fan or slider), the server/database pushes the payload down instantly over Channel A. The device executes the command in real-time (<5ms) and immediately updates local hardware state and UI controls.
+
+2. **Channel B: Uplink Telemetry Cadence Stream (10s Default / 5s Fast)**:
    - **Default Interval (10s)**: IoT nodes transmit telemetry packets every 10 seconds (`10000ms`) during standard background operation.
    - **Adaptive Fast Cadence (5s)**: When a web client opens the device dashboard tab, `viewers_active` transitions to `true`, automatically increasing the telemetry transmission rate to 5 seconds (`5000ms`) for real-time responsiveness.
 
-2. **Downlink Command Dispatch Channels**:
-   - **Primary Real-Time Push (<5ms)**: IoT nodes maintain a persistent WebSocket connection to Supabase Realtime (`realtime:public:device_commands`). When a web UI user triggers a control action, the server pushes the command payload over WebSocket with sub-5ms latency.
-   - **Secondary HTTP Piggybacked Polling (Fallback)**: When posting telemetry via `POST /api/device/telemetry` or `/rest/v1/rpc/ingest_telemetry`, the server response includes an array of queued `pending` commands (`status = 'pending'`). This guarantees command delivery even if WebSocket connection drops.
-
-3. **Command Payload Execution & Filtering Rules**:
-   - **Null / Empty Filtering**: When no pending commands are queued, the telemetry ingest response returns an empty array `[]` (or metadata object). Nodes **MUST** filter out null or incomplete command objects (`!cmd || !cmd.target || cmd.target === 'undefined'`) to prevent spurious command execution logs.
-   - **Atomic State Transition**: Pending commands are updated to `status = 'executed'` atomically within the database transaction when fetched.
+3. **Secondary Non-Instant Fallback (HTTP Telemetry Response Piggybacking)**:
+   - **Non-Instant / Delayed (10s/5s Telemetry Cadence)**: This is **NOT** an instant push channel. When an IoT node posts periodic telemetry via `POST /api/device/telemetry` or `/rest/v1/rpc/ingest_telemetry`, the server response includes an array of queued `pending` commands (`status = 'pending'`). This serves strictly as a non-instant fallback mechanism to catch any commands queued while push connections (Channel A) were temporarily down.
+   - **Command Filtering & Deduplication**: Nodes MUST maintain a deduplication set of executed command IDs (`executedCommandIds`) to prevent re-executing commands already processed instantly via Channel A. Nodes MUST filter out null/incomplete command objects (`!cmd || !cmd.target || cmd.target === 'undefined'`).
+   - **Atomic State Transition**: Pending commands are marked `status = 'executed'` atomically within the database transaction when retrieved via telemetry ingest.
 
 ---
 

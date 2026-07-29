@@ -14,6 +14,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Marveluzz IoT Device Emulator Panel</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --bg-color: #0d0e15;
@@ -360,6 +361,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
   <script>
     let isConnected = false;
     let telemetryTimer = null;
+    let realtimeChannel = null;
+    let emulatorSseSource = null;
+    let executedCommandIds = new Set();
+    let isSendingTelemetry = false;
     let startTime = Date.now();
 
     let tempVal = 24.5;
@@ -367,6 +372,49 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let hasFault = false;
     let autoStreamActive = true;
     let viewersActive = true;
+
+    function executeIncomingCommand(cmd, source = "Push") {
+      if (!cmd || !cmd.target || cmd.target === "undefined") return;
+
+      const cmdId = cmd.id || cmd.commandId;
+      if (cmdId && executedCommandIds.has(cmdId)) {
+        console.log("[CMD] Ignoring duplicate command ID:", cmdId);
+        return;
+      }
+      if (cmdId) {
+        executedCommandIds.add(cmdId);
+        if (executedCommandIds.size > 200) {
+          const first = executedCommandIds.values().next().value;
+          executedCommandIds.delete(first);
+        }
+      }
+
+      log("⚡ Incoming Command Executed (" + source + ") -> Target: '" + cmd.target + "', Action: " + cmd.action + ", Value: " + JSON.stringify(cmd.value), "Command");
+
+      if (cmd.target === "fan_toggle") {
+        if (cmd.action === "toggle") {
+          fanVal = !fanVal;
+        } else if (cmd.action === "set_value") {
+          fanVal = Boolean(cmd.value);
+        } else {
+          fanVal = !fanVal;
+        }
+        const knobFan = document.getElementById("knob-fan");
+        if (knobFan) knobFan.checked = fanVal;
+      } else if (cmd.target === "fan_speed") {
+        const speedVal = Number(cmd.value);
+        if (!isNaN(speedVal)) {
+          log("Fan Speed Target Set -> " + speedVal + "%", "Command");
+        }
+      } else if (cmd.target === "viewers_active") {
+        toggleViewersActive(!!cmd.value);
+        const knobViewers = document.getElementById("knob-viewers");
+        if (knobViewers) knobViewers.checked = viewersActive;
+      }
+
+      // Immediately send updated state via telemetry packet back to server
+      sendTelemetryPacket();
+    }
 
     function getStreamIntervalMs() {
       return viewersActive ? 5000 : 10000;
@@ -548,7 +596,66 @@ const HTML_CONTENT = `<!DOCTYPE html>
           badge.className = "status-badge connected";
           statusText.innerText = "Connected";
 
-          // Start Telemetry Ingest Loop
+          // -------------------------------------------------------------
+          // INSTANT COMMAND PUSH DOWN CHANNEL (Parallel & Independent to Telemetry)
+          // -------------------------------------------------------------
+          if (isDirect) {
+            if (window.supabase) {
+              try {
+                const spClient = window.supabase.createClient(hubUrl, anonKey);
+                realtimeChannel = spClient.channel('emulator_push_' + deviceId)
+                  .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'device_commands',
+                    filter: 'device_id=eq.' + deviceId
+                  }, (payload) => {
+                    console.log("[INSTANT PUSH] Realtime payload received:", payload);
+                    if (payload && payload.new) {
+                      executeIncomingCommand(payload.new, "Supabase Realtime Push (<5ms)");
+                    }
+                  })
+                  .subscribe((status) => {
+                    console.log("[INSTANT PUSH] Realtime channel status:", status);
+                    if (status === 'SUBSCRIBED') {
+                      log("⚡ Direct Command Push Down channel active (Supabase Realtime WebSocket).", "System");
+                    }
+                  });
+              } catch (e) {
+                console.error("[INSTANT PUSH] Supabase Realtime setup error:", e);
+              }
+            } else {
+              log("⚠️ Supabase JS library unavailable. Falling back to HTTP polling.", "Error");
+            }
+          } else {
+            try {
+              const sseUrl = hubUrl + "/api/device/events?deviceId=" + encodeURIComponent(deviceId);
+              console.log("[INSTANT PUSH] Opening SSE stream to:", sseUrl);
+              emulatorSseSource = new EventSource(sseUrl);
+
+              emulatorSseSource.addEventListener("connected", () => {
+                log("⚡ Direct Command Push Down stream active (Edge Gateway SSE).", "System");
+              });
+
+              emulatorSseSource.addEventListener("command", (e) => {
+                console.log("[INSTANT PUSH] SSE payload received:", e.data);
+                try {
+                  const cmdObj = JSON.parse(e.data);
+                  executeIncomingCommand(cmdObj, "Edge Gateway SSE Push (<5ms)");
+                } catch (err) {
+                  console.error("[INSTANT PUSH] Failed parsing SSE payload:", err);
+                }
+              });
+
+              emulatorSseSource.onerror = (err) => {
+                console.log("[INSTANT PUSH] SSE stream reconnecting...", err);
+              };
+            } catch (e) {
+              console.error("[INSTANT PUSH] SSE setup error:", e);
+            }
+          }
+
+          // Start Telemetry Ingest Loop (10s default / 5s fast)
           sendTelemetryPacket();
           if (autoStreamActive) {
             telemetryTimer = setInterval(sendTelemetryPacket, getStreamIntervalMs());
@@ -567,6 +674,18 @@ const HTML_CONTENT = `<!DOCTYPE html>
         clearInterval(telemetryTimer);
         telemetryTimer = null;
       }
+      if (realtimeChannel) {
+        try {
+          realtimeChannel.unsubscribe();
+        } catch (_) {}
+        realtimeChannel = null;
+      }
+      if (emulatorSseSource) {
+        try {
+          emulatorSseSource.close();
+        } catch (_) {}
+        emulatorSseSource = null;
+      }
       const connectBtn = document.getElementById("connect-btn");
       const badge = document.getElementById("connection-badge");
       const statusText = document.getElementById("status-text");
@@ -580,26 +699,27 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
 
     async function sendTelemetryPacket() {
-      if (!isConnected) return;
-
-      const hubUrl = getCleanHubUrl();
-      const deviceId = document.getElementById("device-id").value.trim();
-      const deviceKey = document.getElementById("device-key").value.trim();
-      const anonKey = document.getElementById("anon-key").value.trim();
-      const uptimeSec = Math.floor((Date.now() - startTime) / 1000);
-      const isDirect = isDirectSupabaseMode();
-
-      const telemetryData = {
-        temperature: Number(tempVal.toFixed(1)),
-        fan_toggle: fanVal,
-        uptime: uptimeSec + "s",
-        viewers_active: viewersActive,
-        power_save_mode: !viewersActive,
-        status_text: hasFault ? "CRITICAL: Fault" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
-        ...(hasFault ? { fault: true, emergency_stop: true } : {})
-      };
+      if (!isConnected || isSendingTelemetry) return;
+      isSendingTelemetry = true;
 
       try {
+        const hubUrl = getCleanHubUrl();
+        const deviceId = document.getElementById("device-id").value.trim();
+        const deviceKey = document.getElementById("device-key").value.trim();
+        const anonKey = document.getElementById("anon-key").value.trim();
+        const uptimeSec = Math.floor((Date.now() - startTime) / 1000);
+        const isDirect = isDirectSupabaseMode();
+
+        const telemetryData = {
+          temperature: Number(tempVal.toFixed(1)),
+          fan_toggle: fanVal,
+          uptime: uptimeSec + "s",
+          viewers_active: viewersActive,
+          power_save_mode: !viewersActive,
+          status_text: hasFault ? "CRITICAL: Fault" : (viewersActive ? "Live Streaming" : "Power-Saving Idle"),
+          ...(hasFault ? { fault: true, emergency_stop: true } : {})
+        };
+
         let endpoint = hubUrl + "/api/device/telemetry";
         let headers = { "Content-Type": "application/json" };
         let bodyPayload = { deviceId, deviceKey, data: telemetryData };
@@ -627,41 +747,16 @@ const HTML_CONTENT = `<!DOCTYPE html>
         }
 
         const data = await res.json();
-        console.log("[TELEMETRY] raw response:", JSON.stringify(data));
         const isSuccess = isDirect ? Array.isArray(data) : data.success;
         const rawCommands = isDirect ? (Array.isArray(data) ? data : []) : (data.commands || []);
         const commandList = (Array.isArray(rawCommands) ? rawCommands : []).flatMap(c => (c && Array.isArray(c.commands)) ? c.commands : [c]);
-        console.log("[TELEMETRY] isDirect=" + isDirect + " isSuccess=" + isSuccess + " commandList=" + JSON.stringify(commandList));
 
         if (isSuccess) {
           log("Telemetry Ingest (" + (viewersActive ? '5s Fast' : '10s Default') + ") -> Temp: " + tempVal.toFixed(1) + "°C, Fan: " + (fanVal ? 'ON' : 'OFF') + ", Fault: " + (hasFault ? 'Active' : 'None'), "Info");
 
           if (commandList && commandList.length > 0) {
             commandList.forEach(cmd => {
-              console.log("[CMD] processing:", JSON.stringify(cmd));
-              if (!cmd || !cmd.target || cmd.target === "undefined") return;
-              log("Incoming Command Executed -> Target: '" + cmd.target + "', Action: " + cmd.action + ", Value: " + JSON.stringify(cmd.value), "Command");
-
-              if (cmd.target === "fan_toggle") {
-                if (cmd.action === "toggle") {
-                  fanVal = !fanVal;
-                } else if (cmd.action === "set_value") {
-                  fanVal = Boolean(cmd.value);
-                } else {
-                  fanVal = !fanVal;
-                }
-                const knobFan = document.getElementById("knob-fan");
-                if (knobFan) knobFan.checked = fanVal;
-              } else if (cmd.target === "fan_speed") {
-                const speedVal = Number(cmd.value);
-                if (!isNaN(speedVal)) {
-                  log("Fan Speed Target Set -> " + speedVal + "%", "Command");
-                }
-              } else if (cmd.target === "viewers_active") {
-                toggleViewersActive(!!cmd.value);
-                const knobViewers = document.getElementById("knob-viewers");
-                if (knobViewers) knobViewers.checked = viewersActive;
-              }
+              executeIncomingCommand(cmd, "HTTP Ingest Piggyback Fallback");
             });
           }
         } else {
@@ -669,6 +764,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
         }
       } catch (e) {
         log("❌ Telemetry Request Failed: " + e.message, "Error");
+      } finally {
+        isSendingTelemetry = false;
       }
     }
   </script>
