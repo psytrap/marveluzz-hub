@@ -32,7 +32,9 @@
           "type": "object",
           "properties": {
             "id": { "type": "string" },
-            "flow": { "type": "string", "enum": ["row", "column"] }
+            "flow": { "type": "string", "enum": ["row", "column"] },
+            "fast_timeout": { "type": "integer", "description": "Active Fast Mode stream interval/timeout in milliseconds (default 5000ms)." },
+            "slow_timeout": { "type": "integer", "description": "Power-Save Idle Mode stream interval/timeout in milliseconds (default 30000ms)." }
           }
         },
         "layout": {

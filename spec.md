@@ -271,10 +271,9 @@ Marveluzz Hub employs a strict **decoupled dual-channel architecture** for low-l
    - **Default Interval (10s)**: IoT nodes transmit telemetry packets every 10 seconds (`10000ms`) during standard background operation.
    - **Adaptive Fast Cadence (5s)**: When a web client opens the device dashboard tab, `viewers_active` transitions to `true`, automatically increasing the telemetry transmission rate to 5 seconds (`5000ms`) for real-time responsiveness.
 
-3. **Secondary Non-Instant Fallback (HTTP Telemetry Response Piggybacking)**:
-   - **Non-Instant / Delayed (10s/5s Telemetry Cadence)**: This is **NOT** an instant push channel. When an IoT node posts periodic telemetry via `POST /api/device/telemetry` or `/rest/v1/rpc/ingest_telemetry`, the server response includes an array of queued `pending` commands (`status = 'pending'`). This serves strictly as a non-instant fallback mechanism to catch any commands queued while push connections (Channel A) were temporarily down.
-   - **Command Filtering & Deduplication**: Nodes MUST maintain a deduplication set of executed command IDs (`executedCommandIds`) to prevent re-executing commands already processed instantly via Channel A. Nodes MUST filter out null/incomplete command objects (`!cmd || !cmd.target || cmd.target === 'undefined'`).
-   - **Atomic State Transition**: Pending commands are marked `status = 'executed'` atomically within the database transaction when retrieved via telemetry ingest.
+3. **No HTTP Command Fallback Piggybacking (Strict Exclusive WebSocket Downlink)**:
+   - **Exclusive WebSocket Push**: Downlink commands MUST be delivered exclusively via Channel A (**Supabase Realtime WebSockets**).
+   - **Zero HTTP Command Polling**: IoT nodes MUST NOT process or execute commands piggybacked in periodic HTTP telemetry ingest responses. HTTP telemetry responses serve strictly to update viewer presence state (`viewers_active`).
 
 ---
 

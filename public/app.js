@@ -13,6 +13,8 @@ let lastSeenTimer = null;
 let lastSeenTimestamp = Date.now();
 let currentStatus = "disconnected";
 let isControlAcquired = false;
+let deviceFastTimeout = 5000;
+let deviceSlowTimeout = 30000;
 
 // -------------------------------------------------------------
 // 1. App Initialization & Page Routing
@@ -180,11 +182,13 @@ function startKeepaliveStaleDetector() {
   if (lastSeenTimer) clearInterval(lastSeenTimer);
 
   lastSeenTimer = setInterval(() => {
-    const elapsedSec = (Date.now() - lastSeenTimestamp) / 1000;
-    if (elapsedSec > 12 && currentStatus !== "disconnected" && currentStatus !== "fault") {
+    // Dynamic stale threshold: 2.5x the device fast_timeout specified in ui_definitions (default 12.5s)
+    const staleThresholdMs = deviceFastTimeout * 2.5;
+    const elapsedMs = Date.now() - lastSeenTimestamp;
+    if (elapsedMs > staleThresholdMs && currentStatus !== "disconnected" && currentStatus !== "fault") {
       updateStatusBadge("stale", "Stale Connection");
     }
-  }, 4000);
+  }, 2000);
 }
 
 function toggleInputLockOverlay(isOwner) {
@@ -380,6 +384,14 @@ function renderUIDefinition(layoutDef) {
   const titleEl = document.getElementById("dashboard-title");
 
   if (!container || !layoutDef || !layoutDef.layout) return;
+
+  const props = layoutDef.properties || {};
+  if (props.fast_timeout || layoutDef.fast_timeout) {
+    deviceFastTimeout = Number(props.fast_timeout || layoutDef.fast_timeout);
+  }
+  if (props.slow_timeout || layoutDef.slow_timeout) {
+    deviceSlowTimeout = Number(props.slow_timeout || layoutDef.slow_timeout);
+  }
 
   if (titleEl && layoutDef.title) {
     titleEl.textContent = layoutDef.title;

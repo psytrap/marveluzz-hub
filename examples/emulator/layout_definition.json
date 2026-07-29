@@ -3,7 +3,9 @@
   "type": "layout",
   "properties": {
     "id": "layout_rows",
-    "flow": "row"
+    "flow": "row",
+    "fast_timeout": 5000,
+    "slow_timeout": 30000
   },
   "layout": [
     {

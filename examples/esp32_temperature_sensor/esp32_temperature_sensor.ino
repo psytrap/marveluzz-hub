@@ -16,6 +16,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 
@@ -26,6 +27,7 @@
 // 1. Global State & NVS Flash Storage
 // -------------------------------------------------------------
 Preferences prefs;
+WebSocketsClient webSocket;
 
 String cfgSsid;
 String cfgPass;
@@ -44,6 +46,46 @@ void applyLedHardwareState(bool active) {
   deviceState.ledState = active;
   digitalWrite(LED_PIN, deviceState.ledState ? HIGH : LOW);
   Serial.printf("💡 LED Hardware Output Switched: %s\n", deviceState.ledState ? "ON" : "OFF");
+}
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.println("❌ Supabase Realtime WebSocket Disconnected.");
+      deviceState.wsConnected = false;
+      break;
+    case WStype_CONNECTED:
+      Serial.println("⚡ Connected to Direct-to-Supabase Realtime WebSockets (<5ms Push Active)!");
+      deviceState.wsConnected = true;
+      {
+        String joinPayload = TelemetryLogic::buildWsJoinPayload(cfgDeviceId);
+        webSocket.sendTXT(joinPayload);
+      }
+      break;
+    case WStype_TEXT:
+      Serial.printf("⚡ Instant WebSocket Push Received: %s\n", payload);
+      TelemetryLogic::parseIngestResponse(String((char*)payload), deviceState, applyLedHardwareState);
+      break;
+    default:
+      break;
+  }
+}
+
+void setupWebSocket() {
+  String protocol, host, path;
+  int port;
+  TelemetryLogic::parseUrl(cfgSupabaseUrl, protocol, host, port, path);
+
+  String wsPath = "/realtime/v1/websocket?apikey=" + cfgAnonKey + "&vsn=1.0.0";
+
+  if (protocol.equalsIgnoreCase("https")) {
+    webSocket.beginSSL(host.c_str(), 443, wsPath.c_str());
+  } else {
+    webSocket.begin(host.c_str(), port, wsPath.c_str());
+  }
+
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
 }
 
 // -------------------------------------------------------------
@@ -204,9 +246,9 @@ void registerUILayout() {
 }
 
 // -------------------------------------------------------------
-// 4. Send Telemetry & Process Executed Command Responses
+// 4. Send Uplink Telemetry Cadence Stream (HTTP POST)
 // -------------------------------------------------------------
-void sendTelemetryAndPollCommands() {
+void sendTelemetry() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
@@ -243,7 +285,7 @@ void sendTelemetryAndPollCommands() {
     String response = http.getString();
     Serial.printf("✅ Telemetry Ingest Response: %s\n", response.c_str());
 
-    // Decode and apply executed commands returned from Marveluzz Hub
+    // Update viewers_active presence stream mode (Commands are strictly WebSocket-only)
     TelemetryLogic::parseIngestResponse(response, deviceState, applyLedHardwareState);
   } else {
     Serial.printf("❌ Telemetry Ingest Error %d: %s\n", httpCode, http.getString().c_str());
@@ -303,7 +345,8 @@ void setup() {
     Serial.println("\n📶 Wi-Fi Connected Successfully! IP: " + WiFi.localIP().toString());
     deviceState.connected = true;
     registerUILayout();
-    sendTelemetryAndPollCommands();
+    setupWebSocket();
+    sendTelemetry();
   } else {
     Serial.println("\n❌ Wi-Fi Connection Failed!");
     Serial.println("⚠️ Type 'reset' in Serial Monitor and restart to update your Wi-Fi credentials.");
@@ -313,6 +356,8 @@ void setup() {
 }
 
 void loop() {
+  webSocket.loop();
+
   // Listen for 'reset' command typed into Serial Monitor while running
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
@@ -329,6 +374,6 @@ void loop() {
 
   if (now - lastUpdateMs >= interval) {
     lastUpdateMs = now;
-    sendTelemetryAndPollCommands();
+    sendTelemetry();
   }
 }

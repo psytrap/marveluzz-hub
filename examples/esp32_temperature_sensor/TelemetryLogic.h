@@ -22,38 +22,32 @@ struct DeviceState {
   bool viewersActive = true;
   bool hasFault = false;
   const char* faultCode = nullptr;
-  unsigned long streamIntervalMs = 5000; // 5s fast stream default
+  unsigned long fastIntervalMs = 5000;
+  unsigned long slowIntervalMs = 30000;
+  unsigned long streamIntervalMs = 5000;
 };
 
 class TelemetryLogic {
 public:
-  // Decodes an endpoint URL into protocol, host, port, and path variables
-  static void parseUrl(String url, String &protocol, String &host, int &port, String &path) {
-    protocol = "http";
-    host = "";
-    port = 80;
-    path = "/";
-
-    int protoIdx = url.indexOf("://");
+  static void parseUrl(const String& fullUrl, String& protocol, String& host, int& port, String& path) {
+    int protoIdx = fullUrl.indexOf("://");
     if (protoIdx != -1) {
-      protocol = url.substring(0, protoIdx);
-      url = url.substring(protoIdx + 3);
-    }
-
-    int pathIdx = url.indexOf('/');
-    if (pathIdx != -1) {
-      path = url.substring(pathIdx);
-      url = url.substring(0, pathIdx);
-    }
-
-    int portIdx = url.indexOf(':');
-    if (portIdx != -1) {
-      host = url.substring(0, portIdx);
-      port = url.substring(portIdx + 1).toInt();
+      protocol = fullUrl.substring(0, protoIdx);
+      String rest = fullUrl.substring(protoIdx + 3);
+      int slashIdx = rest.indexOf('/');
+      if (slashIdx != -1) {
+        host = rest.substring(0, slashIdx);
+        path = rest.substring(slashIdx);
+      } else {
+        host = rest;
+        path = "";
+      }
     } else {
-      host = url;
-      port = (protocol.equalsIgnoreCase("https")) ? 443 : 80;
+      protocol = "http";
+      host = fullUrl;
+      path = "";
     }
+    port = protocol.equalsIgnoreCase("https") ? 443 : 80;
   }
 
   // Formats uptime into a human-readable duration string (Days Hours Minutes Seconds)
@@ -117,6 +111,16 @@ public:
 
     layoutDef["title"] = "ESP32 Field Node";
     layoutDef["type"] = "layout";
+
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonObject props = layoutDef["properties"].to<JsonObject>();
+#else
+    JsonObject props = layoutDef.createNestedObject("properties");
+#endif
+    props["id"] = "layout_container";
+    props["flow"] = "row";
+    props["fast_timeout"] = 5000;
+    props["slow_timeout"] = 30000;
 
 #if ARDUINOJSON_VERSION_MAJOR >= 7
     JsonArray layout = layoutDef["layout"].to<JsonArray>();
@@ -218,36 +222,14 @@ public:
     DeserializationError error = deserializeJson(doc, jsonResponse);
     if (error) return;
 
-    // Handle WebSocket postgres_changes event payload
+    // Handle WebSocket postgres_changes event payload (EXCLUSIVE DOWNLINK COMMAND PATH)
     if (doc["event"] == "postgres_changes") {
       JsonObject payloadRecord = doc["payload"]["data"]["record"];
       if (!payloadRecord.isNull()) {
         const char* target = payloadRecord["target"];
         if (target != nullptr && String(target) == "led_toggle") {
-          bool val = payloadRecord["value"] | !state.ledState;
-          state.ledState = val;
-          if (onLedCommand != nullptr) {
-            onLedCommand(state.ledState);
-          }
-        }
-      }
-      return;
-    }
-
-    // Handle JSON object response: {"success":true, "viewers_active":bool, "commands":[...]}
-    if (doc.is<JsonObject>()) {
-      JsonObject obj = doc.as<JsonObject>();
-      if (!obj["viewers_active"].isNull()) {
-        state.viewersActive = obj["viewers_active"].as<bool>();
-        state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
-      }
-      JsonArray cmds = obj["commands"].as<JsonArray>();
-      for (JsonObject cmd : cmds) {
-        const char* target = cmd["target"];
-        if (target == nullptr) continue;
-        if (String(target) == "led_toggle") {
-          bool val = (String(cmd["action"] | "") == "set_value")
-                       ? cmd["value"].as<bool>()
+          bool val = (String(payloadRecord["action"] | "") == "set_value")
+                       ? payloadRecord["value"].as<bool>()
                        : !state.ledState;
           state.ledState = val;
           if (onLedCommand != nullptr) {
@@ -258,46 +240,21 @@ public:
       return;
     }
 
-    // Handle standard HTTP POST RPC array payload:
-    // Format: [{"success":true, "viewers_active":bool, "commands":[{"target":..., "action":..., "value":...}]}]
+    // Handle HTTP telemetry ingest response (Viewer presence stream mode updates ONLY)
+    if (doc.is<JsonObject>()) {
+      JsonObject obj = doc.as<JsonObject>();
+      if (!obj["viewers_active"].isNull()) {
+        state.viewersActive = obj["viewers_active"].as<bool>();
+        state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
+      }
+      return;
+    }
+
     if (doc.is<JsonArray>()) {
       for (JsonObject row : doc.as<JsonArray>()) {
-
-        // Update viewers_active from top-level field
         if (!row["viewers_active"].isNull()) {
           state.viewersActive = row["viewers_active"].as<bool>();
           state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
-        }
-
-        // Unwrap nested commands array or direct row fields
-        JsonArray cmds = row["commands"].as<JsonArray>();
-        if (!cmds.isNull()) {
-          for (JsonObject cmd : cmds) {
-            const char* target = cmd["target"];
-            if (target == nullptr) continue;
-
-            if (String(target) == "led_toggle") {
-              bool val = (String(cmd["action"] | "") == "set_value")
-                           ? cmd["value"].as<bool>()
-                           : !state.ledState;
-              state.ledState = val;
-              if (onLedCommand != nullptr) {
-                onLedCommand(state.ledState);
-              }
-            }
-          }
-        } else {
-          // Direct command row format
-          const char* target = row["target"];
-          if (target != nullptr && String(target) == "led_toggle") {
-            bool val = (String(row["action"] | "") == "set_value")
-                         ? row["value"].as<bool>()
-                         : !state.ledState;
-            state.ledState = val;
-            if (onLedCommand != nullptr) {
-              onLedCommand(state.ledState);
-            }
-          }
         }
       }
     }
