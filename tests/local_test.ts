@@ -175,6 +175,20 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     assertEquals(queuedCmdFalse?.action, "set_value");
     assertEquals(queuedCmdFalse?.value, false);
   });
+
+  await t.step("Device joins while Web UI viewer is already open -> returns viewers_active=true on initial boot telemetry ingest", () => {
+    const db = new MockSupabaseEngine();
+
+    // 1. Web UI dashboard is already open before device boots
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, true);
+
+    // 2. Device boots up and sends initial telemetry ingest
+    const res = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 24.5, uptime: "0s" });
+
+    // 3. Verify initial telemetry ingest response immediately returns viewers_active = true
+    assertEquals(res.length, 1);
+    assertEquals(res[0].viewers_active, true);
+  });
 });
 
 Deno.test("Local Engine: Exclusive Control Lease & Storage Lifecycle", async (t) => {

@@ -65,6 +65,7 @@ async function initApp() {
 
       loadInitialData();
       startKeepaliveStaleDetector();
+      updateViewerPresence(true);
     }
 
     loadVersionAndSelfTest();
@@ -557,8 +558,38 @@ async function toggleControlLease() {
   }
 }
 
+function updateViewerPresence(active) {
+  const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
+  if (isDirectoryPage || !currentDeviceId) return;
+
+  const payload = JSON.stringify({
+    deviceId: currentDeviceId,
+    target: "viewers_active",
+    action: "set_value",
+    value: active
+  });
+
+  if (active) {
+    sendControlCommand("viewers_active", "set_value", true);
+  } else {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon("/api/device/command", blob);
+    } else {
+      fetch("/api/device/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true
+      });
+    }
+  }
+}
+
 // Auto-Release Control Lease on Page Unload / Navigation / Tab Switch
 function releaseControlLeaseOnLeave() {
+  updateViewerPresence(false);
+
   if (isControlAcquired && currentDeviceId) {
     const payload = JSON.stringify({
       deviceId: currentDeviceId,
