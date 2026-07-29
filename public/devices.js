@@ -7,12 +7,14 @@ async function loadDeviceDirectory() {
   const statusBadge = document.getElementById("status-badge");
   const controlBtn = document.getElementById("btn-control");
   const navDirBtn = document.getElementById("nav-directory-btn");
+  const navManageBtn = document.getElementById("nav-manage-btn");
 
   if (titleEl) titleEl.textContent = "Device Directory";
   if (uuidDisplay) uuidDisplay.style.display = "none";
   if (statusBadge) statusBadge.style.display = "none";
   if (controlBtn) controlBtn.style.display = "none";
   if (navDirBtn) navDirBtn.style.display = "none";
+  if (navManageBtn) navManageBtn.style.display = "none";
 
   if (!container) return;
 
@@ -104,8 +106,8 @@ async function loadDeviceDirectory() {
         </div>
 
         <div class="device-actions">
-          <a href="/?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; font-size:12px; padding:6px 12px;">Open Panel</a>
-          <button class="btn-delete" style="font-size:12px; padding:6px 12px;" onclick="wipeDeviceData('${dev.deviceId}')">Wipe Data</button>
+          <a href="/devices?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; font-size:12px; padding:6px 12px;">Open Panel</a>
+          <a href="/devices/manage?device_id=${dev.deviceId}" class="btn-action" style="text-decoration:none; font-size:12px; padding:6px 12px;">Manage</a>
         </div>
       `;
       dirContainer.appendChild(row);

@@ -214,6 +214,27 @@ export class MockSupabaseEngine {
     return id;
   }
 
+  // Key rotation, retention TTL, and purge helpers
+  public rotateDeviceKey(deviceId: string, newKey: string): boolean {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return false;
+    dev.device_key = newKey;
+    return true;
+  }
+
+  public updateRetention(deviceId: string, ttlDays: number): boolean {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return false;
+    dev.history_ttl_days = ttlDays;
+    return true;
+  }
+
+  public purgeTelemetry(deviceId: string): number {
+    const initialLen = this.telemetryHistory.length;
+    this.telemetryHistory = this.telemetryHistory.filter(item => item.device_id !== deviceId);
+    return initialLen - this.telemetryHistory.length;
+  }
+
   // Mirrors RPC: schema_version
   public schemaVersion(): string {
     return "20260728000000";

@@ -237,6 +237,21 @@ BEGIN
 END;
 $$;
 
+-- Rotate Device Secret Key Procedure
+CREATE OR REPLACE FUNCTION public.rotate_device_key(p_device_id UUID, p_new_key TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.devices
+    SET device_key = p_new_key
+    WHERE id = p_device_id;
+
+    RETURN FOUND;
+END;
+$$;
+
 -- Schema Version & Contract Compatibility Function
 CREATE OR REPLACE FUNCTION public.schema_version()
 RETURNS TEXT
@@ -261,8 +276,9 @@ CREATE POLICY "Public Read Telemetry Latest" ON public.telemetry_latest FOR SELE
 CREATE POLICY "Public Read Telemetry History" ON public.telemetry_history FOR SELECT USING (true);
 CREATE POLICY "Public Read Device Commands" ON public.device_commands FOR SELECT USING (true);
 
--- Grant Public & Service Role Access for Schema Version Compatibility RPC
+-- Grant Public & Service Role Access for RPCs
 GRANT EXECUTE ON FUNCTION public.schema_version() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rotate_device_key(UUID, TEXT) TO anon, authenticated, service_role;
 
 -- Force PostgREST Schema Cache Reload
 NOTIFY pgrst, 'reload schema';

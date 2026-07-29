@@ -301,6 +301,26 @@ Deno.test("Local Engine: Exclusive Control Lease & Storage Lifecycle", async (t)
     assertEquals(history[0].data.temperature, 23.0);
   });
 
+  await t.step("Rotates secret device key and updates retention TTL", () => {
+    const db = new MockSupabaseEngine();
+    const newKey = "sec_rotated_999";
+
+    const rotateOk = db.rotateDeviceKey(MOCK_DEVICE_ID, newKey);
+    assertEquals(rotateOk, true);
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.device_key, newKey);
+
+    const ttlOk = db.updateRetention(MOCK_DEVICE_ID, 30);
+    assertEquals(ttlOk, true);
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.history_ttl_days, 30);
+
+    // Old key fails telemetry ingest
+    assertThrows(() => db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 20.0 }));
+
+    // New key succeeds telemetry ingest
+    const newIngest = db.ingestTelemetry(MOCK_DEVICE_ID, newKey, { temperature: 20.0 });
+    assert(newIngest.length > 0);
+  });
+
   await t.step("Returns storage footprint statistics and wipe operations", () => {
     const db = new MockSupabaseEngine();
     db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 22.0 });

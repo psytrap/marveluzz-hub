@@ -237,29 +237,129 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   // Device Storage Footprint Statistics Endpoint
-  if (pathname === "/api/devices/stats" && req.method === "GET") {
+  // Device Management: Get Stats & Settings Endpoint
+  if ((pathname === "/api/devices/stats" || pathname === "/api/device/stats") && req.method === "GET") {
     const deviceId = url.searchParams.get("device_id");
     let layoutDef: any = null;
     let historyCount = 0;
+    let title = "IoT Device";
+    let status = "detached";
+    let lastSeen: string | null = null;
+    let historyTtlDays = 7;
+    let deviceKey = "";
+
     if (supabase && deviceId) {
+      const { data: devRow } = await supabase.from("devices").select("title, status, last_seen, history_ttl_days, device_key").eq("id", deviceId).single();
+      if (devRow) {
+        title = devRow.title;
+        status = devRow.status;
+        lastSeen = devRow.last_seen;
+        historyTtlDays = devRow.history_ttl_days || 7;
+        deviceKey = devRow.device_key || "";
+      }
       const { data: uiRow } = await supabase.from("ui_definitions").select("layout_def").eq("device_id", deviceId).single();
       if (uiRow) layoutDef = uiRow.layout_def;
+
       const { count } = await supabase.from("telemetry_history").select("id", { count: "exact", head: true }).eq("device_id", deviceId);
       historyCount = count || 0;
     } else if (mockDb && deviceId) {
+      const dev = mockDb.devices.get(deviceId);
+      if (dev) {
+        title = dev.title;
+        status = dev.status;
+        lastSeen = dev.last_seen;
+        historyTtlDays = dev.history_ttl_days || 7;
+        deviceKey = dev.device_key || "";
+      }
       layoutDef = mockDb.uiDefinitions.get(deviceId) || null;
       historyCount = mockDb.telemetryHistory.filter(item => item.device_id === deviceId).length;
     }
+
+    const maskedKey = deviceKey.length > 4 ? `••••••••••••${deviceKey.slice(-4)}` : "••••••••••••";
+
     return new Response(JSON.stringify({
       deviceId,
-      layout_definition: layoutDef,
+      title,
+      status,
+      lastSeen,
+      historyTtlDays,
       historyCount,
-      estimatedBytes: historyCount * 128
+      estimatedBytes: historyCount * 128,
+      maskedKey,
+      layout_definition: layoutDef
     }), { headers: { "Content-Type": "application/json" } });
   }
 
+  // Device Management: Secret Key Rotation Endpoint
+  if (pathname === "/api/device/rotate_key" && req.method === "POST") {
+    const user = await getAuthenticatedUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+
+    try {
+      const { deviceId } = await req.json();
+      if (!deviceId) return new Response(JSON.stringify({ error: "Missing deviceId" }), { status: 400 });
+
+      const newKey = `sec_${crypto.randomUUID().replace(/-/g, "")}`;
+
+      if (supabase) {
+        const { error } = await supabase.rpc("rotate_device_key", { p_device_id: deviceId, p_new_key: newKey });
+        if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+      } else if (mockDb) {
+        mockDb.rotateDeviceKey(deviceId, newKey);
+      }
+
+      return new Response(JSON.stringify({ success: true, newKey }), { headers: { "Content-Type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    }
+  }
+
+  // Device Management: Retention TTL Update Endpoint
+  if (pathname === "/api/device/update_retention" && req.method === "POST") {
+    const user = await getAuthenticatedUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+
+    try {
+      const { deviceId, historyTtlDays } = await req.json();
+      if (!deviceId || !historyTtlDays) return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
+
+      if (supabase) {
+        await supabase.from("devices").update({ history_ttl_days: parseInt(historyTtlDays) }).eq("id", deviceId);
+      } else if (mockDb) {
+        mockDb.updateRetention(deviceId, parseInt(historyTtlDays));
+      }
+
+      return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    }
+  }
+
+  // Device Management: Purge Telemetry Endpoint
+  if (pathname === "/api/device/purge_telemetry" && req.method === "POST") {
+    const user = await getAuthenticatedUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+
+    try {
+      const { deviceId } = await req.json();
+      if (!deviceId) return new Response(JSON.stringify({ error: "Missing deviceId" }), { status: 400 });
+
+      let deletedCount = 0;
+      if (supabase) {
+        const { count } = await supabase.from("telemetry_history").delete({ count: "exact" }).eq("device_id", deviceId);
+        deletedCount = count || 0;
+      } else if (mockDb) {
+        deletedCount = mockDb.purgeTelemetry(deviceId);
+      }
+
+      return new Response(JSON.stringify({ success: true, deletedCount }), { headers: { "Content-Type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    }
+  }
+
   // Protected Page Views
-  if (pathname === "/" || pathname === "/devices") {
+  if (pathname === "/" || pathname === "/devices" || pathname === "/devices/manage" || pathname === "/devices/stats") {
     const user = await getAuthenticatedUser();
     if (!user) {
       return new Response(null, { status: 302, headers: { "Location": `${url.origin}/login` } });

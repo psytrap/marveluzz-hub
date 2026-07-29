@@ -50,7 +50,13 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
-    if (!hasDeviceIdParam) {
+    const isManagePage = window.location.pathname.startsWith("/devices/manage") || window.location.pathname.startsWith("/devices/stats");
+
+    if (isManagePage) {
+      if (typeof loadDeviceManagementPage === "function") {
+        loadDeviceManagementPage();
+      }
+    } else if (!hasDeviceIdParam) {
       if (typeof loadDeviceDirectory === "function") {
         loadDeviceDirectory();
       }
@@ -59,6 +65,7 @@ async function initApp() {
       const statusBadge = document.getElementById("status-badge");
       const uuidEl = document.getElementById("device-uuid-text");
       const navDirBtn = document.getElementById("nav-directory-btn");
+      const navManageBtn = document.getElementById("nav-manage-btn");
 
       if (uuidDisplay) uuidDisplay.style.display = "inline-flex";
       if (statusBadge) statusBadge.style.display = "inline-flex";
@@ -67,6 +74,10 @@ async function initApp() {
         navDirBtn.style.display = "inline-block";
         navDirBtn.textContent = "Device Directory";
         navDirBtn.setAttribute("href", "/");
+      }
+      if (navManageBtn) {
+        navManageBtn.style.display = "inline-block";
+        navManageBtn.setAttribute("href", `/devices/manage?device_id=${currentDeviceId}`);
       }
 
       if (typeof loadInitialData === "function") loadInitialData();
