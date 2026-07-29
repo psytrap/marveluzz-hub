@@ -223,9 +223,28 @@ function setupRealtimeSubscriptions() {
   if (supabaseClient) {
     const channel = supabaseClient
       .channel('public:dashboard')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, payload => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'devices' }, payload => {
         if (isDirectoryPage) {
           loadDeviceDirectory();
+          return;
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'devices' }, payload => {
+        if (isDirectoryPage) {
+          loadDeviceDirectory();
+          return;
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+        if (isDirectoryPage) {
+          // Only re-render directory if display_name or status changed — ignore
+          // telemetry-driven heartbeat columns (last_seen_at, viewers_active,
+          // controller_session_id) to avoid a full HTTP re-fetch on every 5s ESP32 ping.
+          const old = payload.old || {};
+          const next = payload.new || {};
+          if (old.display_name !== next.display_name || old.status !== next.status) {
+            loadDeviceDirectory();
+          }
           return;
         }
         if (payload.new && payload.new.id === currentDeviceId) {
@@ -252,10 +271,9 @@ function setupRealtimeSubscriptions() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ui_definitions' }, payload => {
-        if (isDirectoryPage) {
-          loadDeviceDirectory();
-          return;
-        }
+        // Directory page: ui_definitions changes (device registering its layout) are
+        // irrelevant to the directory listing — do not trigger a reload here.
+        if (isDirectoryPage) return;
         if (payload.new && payload.new.device_id === currentDeviceId) {
           lastSeenTimestamp = Date.now();
           renderUIDefinition(payload.new.layout_def);
@@ -435,10 +453,9 @@ function renderUIDefinition(layoutDef) {
     } 
     // 4. Widget: Click Button
     else if (widget.type === "button") {
-      const isActive = String(widget.properties.value).toLowerCase() === "true";
       card.innerHTML = `
         <span class="widget-label">${widget.properties.label}</span>
-        <button id="val-${widget.properties.id}" class="widget-btn${isActive ? ' widget-btn-active' : ''}" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
+        <button id="val-${widget.properties.id}" class="widget-btn" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
           ${widget.properties.label}
         </button>
       `;

@@ -7,6 +7,24 @@
   - Benchmark connection re-establishment latency and optimize heartbeat auto-reconnect routines.
 
 ## 🎨 UI & Design
+- [x] **Device Directory: Meaningless Realtime Refresh on Any `devices` Table Change**:
+  - ~~Currently the directory page (`setupRealtimeSubscriptions()`) calls `loadDeviceDirectory()` on **every** `postgres_changes` event on `public.devices` — including telemetry-driven heartbeats that update only `last_seen_at` but leave the directory list unchanged.~~
+  - **Fixed**: Split `event: '*'` into three separate handlers. `INSERT`/`DELETE` always reload the directory. `UPDATE` only reloads when `display_name` or `status` changes — `last_seen_at`, `viewers_active`, `controller_session_id` are ignored.
+  - **Fixed**: `ui_definitions` changes no longer trigger a directory reload (layout registration is irrelevant to the device list).
+
+- [ ] **Define Layout Load & Fill Behavior**:
+  - Specify and implement the exact load and empty-state fill sequence for `renderUIDefinition()` in `public/app.js`:
+    1. **Load**: On device panel open, fetch stored layout from DB (`GET /api/device/layout?device_id=...`). While pending, show a skeleton loader (pulsing placeholder widgets).
+    2. **Fill**: Once the device sends its first telemetry ingest (POST → RPC `ingest_telemetry`), the layout is registered/updated and the skeleton is replaced with rendered widgets.
+    3. **Empty state**: If no layout is registered after N seconds of polling, show a "Waiting for device to register its UI layout..." empty state with a spinner.
+    4. **Stale layout**: If the device is `detached` or `disconnected`, restore the last stored layout from DB as a read-only view with a "Disconnected" overlay.
+  - Document this sequence in `spec.md` §2.6.2.
+
+- [x] **LED Toggle Button Color Convention — Green (ON) / Blue (OFF)**:
+  - **Root cause found & removed**: The `button` widget was reading `widget.properties.value` from the static layout schema (set at ESP32 registration time) to pre-apply `.widget-btn-active` at render time. This was stale and meaningless.
+  - **Fixed**: Button always renders blue (`.widget-btn`) on layout load. Color only changes dynamically via `updateTelemetryData()` which applies `.widget-btn-active` when the ESP32 reports the actual live state (e.g. `data.led_toggle = true`).
+  - **Convention**: Blue = OFF/ready. Green = ON/active. Applied exclusively from live telemetry, not static layout values.
+
 - [ ] **Investigate & Fix Live Device State Management**:
   - Audit status transitions between `live`, `control`, `detached`, `stale`, and `disconnected`.
   - Fix edge cases where background keepalive timers or incoming telemetry events incorrectly override status badges or control button visibility across multi-tab web UI views and directory pages.

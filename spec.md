@@ -301,31 +301,45 @@ Similar to `Every-Panel`, `Marveluzz Hub` relies on device-driven UI definitions
       "properties": {
         "label": "<Display Label>",
         "id": "<telemetry_field_id>",
-        "value": "<default_or_initial_value>",
-        "unit": "<optional_unit_symbol>"
+        "value": "<initial_value — read-only & indicator widgets only. NOT valid on button type>",
+        "unit": "<optional unit symbol — number and range widgets only>"
       }
     }
   ]
 }
 ```
 
+> [!IMPORTANT]
+> The `id` field in each widget `properties` object is the **telemetry binding key**. It MUST exactly match the key name sent in the ESP32 telemetry payload (`p_telemetry_data`). The Web UI uses this key to look up the corresponding DOM element (`#val-<id>`) when live telemetry arrives and update its display value or state.
+>
+> **`value` is a static initial display value registered at layout boot time. It is NOT a live state field and MUST NOT be set on `button` type widgets.** Button live state (ON/OFF color) is driven exclusively by incoming telemetry payloads matching the button's `id` key.
+
 ##### Supported Flow Types (`properties.flow`)
 
 - **`row`**: Arranges widget cards in horizontal flex rows with responsive wrapping (default container layout).
 - **`column`**: Stacks widget cards vertically in a single column layout.
 
-##### Available Widget Types & Properties Table
+##### Available Widget Types & Properties
 
-| Widget Type | Description | Supported Properties | Interaction & Event Handling |
+| Widget Type | Required Properties | Optional Properties | Forbidden Properties | Interaction & Live Update Source |
+| :--- | :--- | :--- | :--- | :--- |
+| `number` | `label`, `id` | `value` (initial display), `unit` | — | **Read-only.** Display updated by incoming telemetry key matching `id`. |
+| `indicator` | `label`, `id` | `value` (initial display), `unit` | — | **Read-only.** Display updated by incoming telemetry key matching `id`. |
+| `range` | `label`, `id` | `value` (initial position), `min`, `max`, `unit` | — | Dispatches `POST /api/device/command` (`set_value`) on slider release. |
+| `button` | `label`, `id` | — | **`value` MUST NOT be set** | Dispatches `POST /api/device/command` (`toggle`) on click. **Color state (blue=OFF / green=ON) is driven exclusively by live telemetry payload key matching `id` — never from layout registration.** |
+| `text` | `label`, `id` | `value` (initial text) | — | **Read-only.** Text updated by incoming telemetry key matching `id`. |
+| `img` | `label`, `id` | `url` or `value` (initial src) | — | Image `src` updated dynamically when telemetry key matching `id` contains a URL. |
+| `divider` | — | — | — | Rendered as a 1px horizontal separator. No telemetry binding. |
+| `chart` | `label`, `id`, `target_key` | — | `value` | Real-time Chart.js time-series plot. `target_key` binds to the telemetry field to plot. |
+
+##### Button Color Convention
+
+| State | CSS Class | Color | Trigger Source |
 | :--- | :--- | :--- | :--- |
-| `number` | Numeric sensor readout gauge card | `label`, `id`, `value`, `unit` | Read-only (Updates on telemetry stream) |
-| `indicator` | Diagnostic status text readout card | `label`, `id`, `value`, `unit` | Read-only (Updates on telemetry stream) |
-| `range` | Interactive slider control | `label`, `id`, `value`, `min`, `max`, `unit` | Dispatches `POST /api/device/command` (`set_value`) |
-| `button` | Push-button toggle control | `label`, `id`, `value` | Dispatches `POST /api/device/command` (`toggle`) |
-| `text` | Read-only string text field | `label`, `id`, `value` | Read-only (Updates on telemetry stream) |
-| `img` | Live camera image or video stream | `label`, `id`, `url` (or `value`) | Dynamic URL source update |
-| `divider` | Horizontal section separator line | None | Rendered as 1px Glassmorphism border line |
-| `chart` | Time-series telemetry line plot | `label`, `id`, `target_key` | Real-time Chart.js plot stream |
+| **OFF / Ready** | `.widget-btn` | Blue `#3b82f6` | Default on layout render |
+| **ON / Active** | `.widget-btn` + `.widget-btn-active` | Green `#16a34a` | Live telemetry: `data[id] === true` |
+
+Button color is **never** derived from the layout `value` property. It is applied exclusively by `updateTelemetryData()` in the Web UI when the ESP32 reports back the actual hardware state in its telemetry payload.
 
 ---
 
