@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.18";
+const APP_VERSION = "1.0.19";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -547,6 +547,29 @@ async function handler(req: Request): Promise<Response> {
         }
         if (ok) {
           broadcastSseEvent(deviceId, "device_status", { deviceId, status: "live", controller_session_id: null });
+        }
+        return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (target === "set_status") {
+        let ok = false;
+        const newStatus = String(value || "disconnected");
+        if (supabase) {
+          const { error } = await supabase
+            .from("devices")
+            .update({ status: newStatus, controller_session_id: null })
+            .eq("id", deviceId);
+          ok = !error;
+        } else if (mockDb) {
+          const dev = mockDb.devices.get(deviceId);
+          if (dev) {
+            dev.status = newStatus as any;
+            dev.controller_session_id = null;
+            ok = true;
+          }
+        }
+        if (ok) {
+          broadcastSseEvent(deviceId, "device_status", { deviceId, status: newStatus, controller_session_id: null });
         }
         return new Response(JSON.stringify({ success: ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

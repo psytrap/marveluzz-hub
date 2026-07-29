@@ -118,10 +118,17 @@ async function loadVersionAndSelfTest() {
 // 2. 7-State Diagnostic Status Badge Machine
 // -------------------------------------------------------------
 function updateStatusBadge(status, customLabel = null) {
+  const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
+  const controlBtn = document.getElementById("btn-control");
+
+  if (isDirectoryPage) {
+    if (controlBtn) controlBtn.style.display = "none";
+    return;
+  }
+
   currentStatus = status;
   const badge = document.getElementById("status-badge");
   const textEl = document.getElementById("status-text");
-  const controlBtn = document.getElementById("btn-control");
 
   if (!badge || !textEl) return;
 

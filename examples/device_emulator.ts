@@ -362,7 +362,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
     let isConnected = false;
     let telemetryTimer = null;
     let realtimeChannel = null;
-    let emulatorSseSource = null;
     let executedCommandIds = new Set();
     let isSendingTelemetry = false;
     let startTime = Date.now();
@@ -597,62 +596,37 @@ const HTML_CONTENT = `<!DOCTYPE html>
           statusText.innerText = "Connected";
 
           // -------------------------------------------------------------
-          // INSTANT COMMAND PUSH DOWN CHANNEL (Parallel & Independent to Telemetry)
+          // MANDATED DIRECT-TO-SUPABASE REALTIME WEBSOCKET PUSH CHANNEL
           // -------------------------------------------------------------
-          if (isDirect) {
-            if (window.supabase) {
-              try {
-                const spClient = window.supabase.createClient(hubUrl, anonKey);
-                realtimeChannel = spClient.channel('emulator_push_' + deviceId)
-                  .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'device_commands',
-                    filter: 'device_id=eq.' + deviceId
-                  }, (payload) => {
-                    console.log("[INSTANT PUSH] Realtime payload received:", payload);
-                    if (payload && payload.new) {
-                      executeIncomingCommand(payload.new, "Supabase Realtime Push (<5ms)");
-                    }
-                  })
-                  .subscribe((status) => {
-                    console.log("[INSTANT PUSH] Realtime channel status:", status);
-                    if (status === 'SUBSCRIBED') {
-                      log("⚡ Direct Command Push Down channel active (Supabase Realtime WebSocket).", "System");
-                    }
-                  });
-              } catch (e) {
-                console.error("[INSTANT PUSH] Supabase Realtime setup error:", e);
-              }
-            } else {
-              log("⚠️ Supabase JS library unavailable. Falling back to HTTP polling.", "Error");
+          if (window.supabase) {
+            try {
+              const supabaseCloudUrl = isDirect ? hubUrl : "https://qmketwlyeexumcxboagc.supabase.co";
+              const supabaseAnonKey = anonKey || "sb_publishable_Tp40f-fYpbtF1_4-6UdWmw_g5AJMM2d";
+              const spClient = window.supabase.createClient(supabaseCloudUrl, supabaseAnonKey);
+
+              realtimeChannel = spClient.channel('emulator_push_' + deviceId)
+                .on('postgres_changes', {
+                  event: 'INSERT',
+                  schema: 'public',
+                  table: 'device_commands',
+                  filter: 'device_id=eq.' + deviceId
+                }, (payload) => {
+                  console.log("[INSTANT PUSH] Supabase Realtime WebSocket payload received:", payload);
+                  if (payload && payload.new) {
+                    executeIncomingCommand(payload.new, "Direct Supabase Realtime WebSocket Push (<5ms)");
+                  }
+                })
+                .subscribe((status) => {
+                  console.log("[INSTANT PUSH] Supabase Realtime WebSocket status:", status);
+                  if (status === 'SUBSCRIBED') {
+                    log("⚡ Mandated Direct-to-Supabase Realtime WebSocket Channel Active (<5ms push).", "System");
+                  }
+                });
+            } catch (e) {
+              console.error("[INSTANT PUSH] Supabase Realtime setup error:", e);
             }
           } else {
-            try {
-              const sseUrl = hubUrl + "/api/device/events?deviceId=" + encodeURIComponent(deviceId);
-              console.log("[INSTANT PUSH] Opening SSE stream to:", sseUrl);
-              emulatorSseSource = new EventSource(sseUrl);
-
-              emulatorSseSource.addEventListener("connected", () => {
-                log("⚡ Direct Command Push Down stream active (Edge Gateway SSE).", "System");
-              });
-
-              emulatorSseSource.addEventListener("command", (e) => {
-                console.log("[INSTANT PUSH] SSE payload received:", e.data);
-                try {
-                  const cmdObj = JSON.parse(e.data);
-                  executeIncomingCommand(cmdObj, "Edge Gateway SSE Push (<5ms)");
-                } catch (err) {
-                  console.error("[INSTANT PUSH] Failed parsing SSE payload:", err);
-                }
-              });
-
-              emulatorSseSource.onerror = (err) => {
-                console.log("[INSTANT PUSH] SSE stream reconnecting...", err);
-              };
-            } catch (e) {
-              console.error("[INSTANT PUSH] SSE setup error:", e);
-            }
+            log("⚠️ Supabase JS library unavailable. Falling back to HTTP telemetry piggyback polling.", "Error");
           }
 
           // Start Telemetry Ingest Loop (10s default / 5s fast)
@@ -668,7 +642,31 @@ const HTML_CONTENT = `<!DOCTYPE html>
       }
     }
 
+    async function sendDisconnectSignal() {
+      try {
+        const hubUrl = getCleanHubUrl();
+        const deviceId = document.getElementById("device-id").value.trim();
+        const anonKey = document.getElementById("anon-key").value.trim();
+        if (hubUrl.indexOf("supabase.co") !== -1) {
+          const url = hubUrl + "/rest/v1/devices?id=eq." + deviceId;
+          const body = JSON.stringify({ status: "disconnected", controller_session_id: null });
+          if (navigator.sendBeacon) {
+            const blob = new Blob([body], { type: "application/json" });
+            navigator.sendBeacon(url, blob);
+          } else {
+            fetch(url, {
+              method: "PATCH",
+              headers: { "apikey": anonKey, "Authorization": "Bearer " + anonKey, "Content-Type": "application/json" },
+              body: body,
+              keepalive: true
+            }).catch(function() {});
+          }
+        }
+      } catch (_) {}
+    }
+
     function disconnect() {
+      sendDisconnectSignal();
       isConnected = false;
       if (telemetryTimer) {
         clearInterval(telemetryTimer);
@@ -680,12 +678,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
         } catch (_) {}
         realtimeChannel = null;
       }
-      if (emulatorSseSource) {
-        try {
-          emulatorSseSource.close();
-        } catch (_) {}
-        emulatorSseSource = null;
-      }
       const connectBtn = document.getElementById("connect-btn");
       const badge = document.getElementById("connection-badge");
       const statusText = document.getElementById("status-text");
@@ -696,6 +688,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
       statusText.innerText = "Disconnected";
       log("🔴 Connection with UI / Target Gateway closed or lost.", "Error");
     }
+
+    window.addEventListener("beforeunload", () => { if (isConnected) sendDisconnectSignal(); });
+    window.addEventListener("pagehide", () => { if (isConnected) sendDisconnectSignal(); });
 
 
     async function sendTelemetryPacket() {
@@ -768,6 +763,28 @@ const HTML_CONTENT = `<!DOCTYPE html>
         isSendingTelemetry = false;
       }
     }
+
+    let lastServerStartedAt = null;
+    function checkServerRestartPing() {
+      setInterval(async () => {
+        try {
+          const res = await fetch("/api/info");
+          if (!res.ok) throw new Error("Offline");
+          const info = await res.json();
+          if (lastServerStartedAt && lastServerStartedAt !== info.startedAt) {
+            log("🔄 Emulator Server restarted! (Started at: " + info.startedAt + ")", "Warning");
+            const badge = document.getElementById("connection-badge");
+            const statusText = document.getElementById("status-text");
+            if (badge && statusText) {
+              badge.className = "status-badge disconnected";
+              statusText.innerText = "Server Restarted";
+            }
+          }
+          lastServerStartedAt = info.startedAt;
+        } catch (_) {}
+      }, 2000);
+    }
+    checkServerRestartPing();
   </script>
 </body>
 </html>`;
@@ -777,6 +794,11 @@ async function handler(req: Request): Promise<Response> {
   if (url.pathname === "/") {
     return new Response(HTML_CONTENT, {
       headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+  if (url.pathname === "/api/info") {
+    return new Response(JSON.stringify({ startedAt: STARTED_AT, status: "online" }), {
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
   return new Response("Not Found", { status: 404 });
@@ -795,5 +817,44 @@ console.log(`
 ⚡ EMULATOR PORT      : ${PORT}
 =======================================================
 Listening on http://localhost:${PORT}/
+=======================================================
 `);
+
+const notifyDeviceOfflineOnShutdown = async () => {
+  try {
+    const hubUrl = DEFAULT_HUB_URL.replace(/\/+$/, "");
+    if (hubUrl.includes("supabase.co")) {
+      await fetch(`${hubUrl}/rest/v1/devices?id=eq.${DEFAULT_DEVICE_ID}`, {
+        method: "PATCH",
+        headers: {
+          "apikey": DEFAULT_ANON_KEY,
+          "Authorization": `Bearer ${DEFAULT_ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: "disconnected", controller_session_id: null })
+      });
+    }
+    console.log("🔴 Device Emulator sent offline status signal to Hub.");
+  } catch (_) {}
+};
+
+if (typeof Deno.addSignalListener === "function") {
+  try {
+    Deno.addSignalListener("SIGINT", async () => {
+      console.log("\n🛑 Stopping Emulator server... Sending offline status signal.");
+      await notifyDeviceOfflineOnShutdown();
+      Deno.exit(0);
+    });
+    Deno.addSignalListener("SIGTERM", async () => {
+      console.log("\n🛑 Terminating Emulator server... Sending offline status signal.");
+      await notifyDeviceOfflineOnShutdown();
+      Deno.exit(0);
+    });
+  } catch (_) {}
+}
+
+globalThis.addEventListener("unload", () => {
+  notifyDeviceOfflineOnShutdown();
+});
+
 Deno.serve({ port: PORT }, handler);

@@ -249,9 +249,8 @@ Marveluzz Hub employs a strict **decoupled dual-channel architecture** for low-l
 > ⚠️ **CRITICAL ARCHITECTURAL REQUIREMENT**: Instant Command Push Down and Telemetry Transmission MUST operate **in parallel and completely independently** on separate asynchronous event loops/threads. Command execution **MUST NOT** be blocked by, queued behind, or deferred until the next telemetry post interval!
 
 1. **Channel A: Instant Downlink Command Push (<5ms, Asynchronous Listener)**:
-   - **Direct Supabase Mode**: IoT nodes maintain a persistent WebSocket channel subscribed to `postgres_changes` on `device_commands` (`device_id = eq.<device_id>`).
-   - **Edge Gateway Mode**: IoT nodes open a persistent Server-Sent Events (SSE) HTTP stream to `GET /api/device/events?deviceId=<device_id>`.
-   - **Execution**: When a dashboard user triggers an action (e.g., toggling a fan or slider), the server/database pushes the payload down instantly over Channel A. The device executes the command in real-time (<5ms) and immediately updates local hardware state and UI controls.
+   - **Direct-to-Supabase Realtime WebSockets**: All physical IoT nodes, microcontrollers, and device emulators **MUST connect directly to Supabase Cloud** via **Supabase Realtime WebSockets** (`postgres_changes` on `public.device_commands`).
+   - **Execution**: When a dashboard user triggers an action (e.g., toggling a fan or slider), Supabase Realtime pushes the command payload down instantly over WebSockets. The device executes the command in real-time (<5ms) and immediately updates local hardware state.
 
 2. **Channel B: Uplink Telemetry Cadence Stream (10s Default / 5s Fast)**:
    - **Default Interval (10s)**: IoT nodes transmit telemetry packets every 10 seconds (`10000ms`) during standard background operation.
@@ -345,10 +344,33 @@ To prevent multi-user command race conditions while ensuring fluid usability acr
      - **Navigation Directory button (`#nav-directory-btn`) is hidden** (`display: none`) since the user is already on the directory.
    - **Input Lock Isolation**: `toggleInputLockOverlay` is strictly scoped to `.widget-card` elements on single-device panels and **never** disables action buttons on directory listings.
    - Each device row card renders:
-     - **Status Badge**: Real-time state indicator (`live`, `control`, `detached`, `stale`).
+     - **Status Badge**: Real-time state indicator (`live`, `control`, `detached`, `stale`, `disconnected`).
      - **Copyable Monospace UUID Pill**: `UUID: <deviceId>` (`user-select: all`).
      - **`Open Panel` Action Link**: Opens device panel (`/?device_id=<deviceId>`).
      - **`Wipe Data` Action Button**: Deletes telemetry logs & schema for that device.
+
+5. **Device Emulator Restart & Offline Signal Protocol**:
+   - The device emulator (`examples/device_emulator.ts`) implements process signal hooks for `SIGINT` (Ctrl+C), `SIGTERM` (server restart), and `unload` events.
+   - When the emulator server process shuts down or restarts, it automatically dispatches an offline patch setting `status = 'disconnected'` and `controller_session_id = null`.
+   - Browser client unload events (`beforeunload` / `pagehide` inside emulator panel) send a matching beacon request to update device state to `disconnected` immediately upon closing the emulator window.
+
+---
+
+#### 2.6.5 Mandated Architectural Rule: Direct-to-Supabase Cloud Only for IoT Devices (PERMANENT)
+
+> [!IMPORTANT]
+> **PERMANENT ARCHITECTURAL DIRECTIVE**:
+> **There must NEVER be an intermediate telemetry or command routing path through Marveluzz Hub Edge Server for production IoT devices. All IoT devices MUST connect via WebSockets directly to Supabase Cloud for live instant push-down commands.**
+
+1. **Direct-to-Supabase Communication Standard**:
+   - All physical IoT nodes, microcontrollers (ESP32/Raspberry Pi), and device emulators **MUST connect directly to Supabase Cloud** (`https://<project-id>.supabase.co`).
+   - **Telemetry Uplink**: Posted directly to Supabase via `POST /rest/v1/rpc/ingest_telemetry` or PostgREST REST endpoints using `SUPABASE_ANON_KEY`.
+   - **UI Schema Registration**: Posted directly to Supabase via `POST /rest/v1/rpc/register_ui_definition`.
+   - **Mandatory WebSockets for Live Push Down**: Instant command push-down **MUST use Supabase Realtime WebSockets** (`postgres_changes` on `public.device_commands`). Sub-5ms instant command delivery directly from Supabase Cloud DB.
+
+2. **Role of Marveluzz Hub Edge Server**:
+   - Marveluzz Hub Edge Server exists **solely** as the Web UI application host and static dashboard gateway for browser users.
+   - Marveluzz Hub Edge Server does **NOT** proxy, relay, or sit in the middle of IoT device traffic in production.
 
 ---
 
