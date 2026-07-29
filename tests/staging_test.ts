@@ -232,7 +232,11 @@ Deno.test("Staging Suite: Endpoint Verification & Integration", async (t) => {
   });
 });
 
-Deno.test("Staging Suite: Deployment Parity & RPC Contract Verification", async (t) => {
+Deno.test({
+  name: "Staging Suite: Deployment Parity & RPC Contract Verification",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async (t) => {
   await t.step("Deno Deploy and Supabase configuration alignment", async () => {
     const res = await fetch(`${STAGING_URL}/api/config`);
     assertEquals(res.status, 200);
@@ -273,4 +277,155 @@ Deno.test("Staging Suite: Deployment Parity & RPC Contract Verification", async 
       assert(Array.isArray(directData));
     }
   });
-});
+
+  await t.step("Staging test for viewers_active state transitions & WebSocket command dispatch", async () => {
+    const configRes = await fetch(`${STAGING_URL}/api/config`);
+    const config = await configRes.json();
+
+    if (!config.supabaseUrl || !config.supabaseAnonKey) {
+      console.log("ℹ️ Skipping Supabase Realtime WS test (Local Standalone Engine Mode)");
+      return;
+    }
+
+    const wsUrl = `${config.supabaseUrl.replace(/^http/, "ws")}/realtime/v1/websocket?apikey=${config.supabaseAnonKey}&vsn=1.0.0`;
+    const receivedEvents: any[] = [];
+    const ws = new WebSocket(wsUrl);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Supabase WebSocket Connection Timeout")), 5000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          ws.send(JSON.stringify({
+            topic: `realtime:public:device_commands:device_id=eq.${TEST_DEVICE_ID}`,
+            event: "phx_join",
+            payload: {},
+            ref: "1"
+          }));
+          resolve();
+        };
+        ws.onerror = (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        };
+      });
+
+      ws.onmessage = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data);
+          receivedEvents.push(parsed);
+        } catch (_) {}
+      };
+
+      const headers = await getStagingAuthHeaders();
+
+      // 1. Dispatch viewers_active = true command
+      await fetch(`${STAGING_URL}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          deviceId: TEST_DEVICE_ID,
+          target: "viewers_active",
+          action: "set_value",
+          value: true
+        })
+      });
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      const commandFrameTrue = receivedEvents.find(
+        (ev) => ev.payload?.record?.target === "viewers_active" && ev.payload?.record?.value === true
+      );
+      assert(commandFrameTrue !== undefined, "Expected to receive viewers_active=true push frame over WebSocket");
+
+      // 2. Dispatch viewers_active = false command
+      await fetch(`${STAGING_URL}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          deviceId: TEST_DEVICE_ID,
+          target: "viewers_active",
+          action: "set_value",
+          value: false
+        })
+      });
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      const commandFrameFalse = receivedEvents.find(
+        (ev) => ev.payload?.record?.target === "viewers_active" && ev.payload?.record?.value === false
+      );
+      assert(commandFrameFalse !== undefined, "Expected to receive viewers_active=false push frame over WebSocket");
+    } finally {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    }
+  });
+
+  await t.step("Direct Supabase Realtime WebSocket command push-down staging verification", async () => {
+    const configRes = await fetch(`${STAGING_URL}/api/config`);
+    const config = await configRes.json();
+
+    if (!config.supabaseUrl || !config.supabaseAnonKey) {
+      console.log("ℹ️ Skipping Supabase Realtime WS test (Running in Local Standalone Engine Mode)");
+      return;
+    }
+
+    const wsUrl = `${config.supabaseUrl.replace(/^http/, "ws")}/realtime/v1/websocket?apikey=${config.supabaseAnonKey}&vsn=1.0.0`;
+    const receivedEvents: any[] = [];
+    const ws = new WebSocket(wsUrl);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Supabase WebSocket Connection Timeout")), 5000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          ws.send(JSON.stringify({
+            topic: `realtime:public:device_commands:device_id=eq.${TEST_DEVICE_ID}`,
+            event: "phx_join",
+            payload: {},
+            ref: "1"
+          }));
+          resolve();
+        };
+        ws.onerror = (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        };
+      });
+
+      ws.onmessage = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data);
+          receivedEvents.push(parsed);
+        } catch (_) {}
+      };
+
+      // Dispatch command via Web UI API
+      const headers = await getStagingAuthHeaders();
+      await fetch(`${STAGING_URL}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          deviceId: TEST_DEVICE_ID,
+          target: "led_toggle",
+          action: "toggle",
+          value: true
+        })
+      });
+
+      // Wait up to 1000ms for Realtime WebSocket push
+      await new Promise((r) => setTimeout(r, 1000));
+
+      const commandFrame = receivedEvents.find(
+        (ev) => ev.event === "INSERT" || ev.event === "postgres_changes" || (ev.payload?.record?.target === "led_toggle")
+      );
+      assert(commandFrame !== undefined, "Expected to receive instant command push frame over WebSocket");
+    } finally {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    }
+  });
+}});

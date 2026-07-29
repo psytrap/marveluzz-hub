@@ -141,6 +141,41 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     const cmdRecord = db.deviceCommands.get(cmdId);
     assertEquals(cmdRecord?.status, "executed");
   });
+
+  await t.step("Staging test for viewers_active state transitions & WebSocket command dispatch", () => {
+    const db = new MockSupabaseEngine();
+
+    // 1. Verify default viewers_active state is false
+    const initialDev = db.devices.get(MOCK_DEVICE_ID);
+    assertEquals(initialDev?.viewers_active, false);
+
+    // 2. Simulate Web UI dashboard viewer opening device panel -> updates viewers_active = true and queues command
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, true);
+    const cmdIdTrue = db.queueCommand(MOCK_DEVICE_ID, "viewers_active", "set_value", true);
+
+    const devActive = db.devices.get(MOCK_DEVICE_ID);
+    assertEquals(devActive?.viewers_active, true);
+
+    const queuedCmdTrue = db.deviceCommands.get(cmdIdTrue);
+    assert(queuedCmdTrue !== undefined);
+    assertEquals(queuedCmdTrue?.target, "viewers_active");
+    assertEquals(queuedCmdTrue?.action, "set_value");
+    assertEquals(queuedCmdTrue?.value, true);
+    assertEquals(queuedCmdTrue?.status, "pending");
+
+    // 3. Simulate Web UI dashboard viewer closing panel -> updates viewers_active = false and queues command
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, false);
+    const cmdIdFalse = db.queueCommand(MOCK_DEVICE_ID, "viewers_active", "set_value", false);
+
+    const devInactive = db.devices.get(MOCK_DEVICE_ID);
+    assertEquals(devInactive?.viewers_active, false);
+
+    const queuedCmdFalse = db.deviceCommands.get(cmdIdFalse);
+    assert(queuedCmdFalse !== undefined);
+    assertEquals(queuedCmdFalse?.target, "viewers_active");
+    assertEquals(queuedCmdFalse?.action, "set_value");
+    assertEquals(queuedCmdFalse?.value, false);
+  });
 });
 
 Deno.test("Local Engine: Exclusive Control Lease & Storage Lifecycle", async (t) => {
