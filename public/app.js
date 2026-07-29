@@ -411,9 +411,10 @@ function renderUIDefinition(layoutDef) {
     } 
     // 4. Widget: Click Button
     else if (widget.type === "button") {
+      const isActive = String(widget.properties.value).toLowerCase() === "true";
       card.innerHTML = `
         <span class="widget-label">${widget.properties.label}</span>
-        <button class="widget-btn" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
+        <button id="val-${widget.properties.id}" class="widget-btn${isActive ? ' widget-btn-active' : ''}" onclick="sendControlCommand('${widget.properties.id}', 'toggle', true)">
           ${widget.properties.label}
         </button>
       `;
@@ -466,8 +467,13 @@ function updateTelemetryData(data) {
   Object.keys(data).forEach(key => {
     const el = document.getElementById(`val-${key}`);
     if (el) {
-      const unitMatch = el.nextElementSibling ? el.nextElementSibling.outerHTML : "";
-      el.textContent = data[key];
+      if (el.tagName === "BUTTON") {
+        // Boolean telemetry → toggle active state on button widget
+        const isActive = data[key] === true || data[key] === "true" || data[key] === 1;
+        el.classList.toggle("widget-btn-active", isActive);
+      } else {
+        el.textContent = data[key];
+      }
     }
 
     const imgEl = document.getElementById(`img-${key}`);

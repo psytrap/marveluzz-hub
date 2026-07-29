@@ -78,8 +78,11 @@ marveluzz-hub/
 │   └── login.js          # Authentication error notification handler
 ├── examples/
 │   ├── device_emulator.ts # Interactive IoT node simulator web panel (Port 8001, 30s interval)
-│   └── esp32_device/     # ESP32 C++ Microcontroller Arduino firmware (5m interval)
-│       └── esp32_device.ino
+│   └── esp32_temperature_sensor/          # Physical ESP32 C++ microcontroller firmware & pinout wiring guide
+│       ├── esp32_temperature_sensor.ino   # Sketch name matches folder (Arduino IDE requirement)
+│       ├── TelemetryLogic.h
+│       ├── certificates.h
+│       └── README.md
 └── tests/
     ├── local_test.ts       # Local test suite (21 unit & mock tests)
     ├── auth_test.ts        # GitHub OAuth & Mock Auth integration test suite (2 tests)

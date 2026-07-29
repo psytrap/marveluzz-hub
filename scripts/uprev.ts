@@ -4,6 +4,7 @@
 
 const MAIN_TS_PATH = "./src/main.ts";
 const INDEX_HTML_PATH = "./public/index.html";
+const EMULATOR_PATH = "./examples/emulator/device_emulator.ts";
 const MIGRATIONS_DIR = "./supabase/migrations";
 
 async function uprevVersion() {
@@ -84,11 +85,20 @@ async function uprevVersion() {
   );
   await Deno.writeTextFile(INDEX_HTML_PATH, indexContent);
 
+  // 5. Update examples/emulator/device_emulator.ts
+  let emulatorContent = await Deno.readTextFile(EMULATOR_PATH);
+  emulatorContent = emulatorContent.replace(
+    /const EMULATOR_VERSION = "[^"]+";/,
+    `const EMULATOR_VERSION = "${newVersion}";`
+  );
+  await Deno.writeTextFile(EMULATOR_PATH, emulatorContent);
+
   console.log(`🚀 Automated Version Uprev Completed:`);
   console.log(`   📦 App Version    : v${currentVersion} ➔ v${newVersion}`);
   console.log(`   🗄️ DB Schema Ver  : v${latestSchemaVersion}`);
   console.log(`   Updated: ${MAIN_TS_PATH}`);
   console.log(`   Updated: ${INDEX_HTML_PATH}`);
+  console.log(`   Updated: ${EMULATOR_PATH}`);
 }
 
 if (import.meta.main) {

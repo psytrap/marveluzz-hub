@@ -319,6 +319,16 @@ main {
   cursor: not-allowed;
 }
 
+.widget-btn-active {
+  background: #16a34a !important;
+  box-shadow: 0 0 12px rgba(22, 163, 74, 0.5);
+}
+
+.widget-btn-active:hover:not(:disabled) {
+  background: #15803d !important;
+  box-shadow: 0 0 18px rgba(22, 163, 74, 0.7);
+}
+
 .widget-text-view {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-color);
