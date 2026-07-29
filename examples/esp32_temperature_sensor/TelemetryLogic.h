@@ -109,7 +109,7 @@ public:
     JsonObject layoutDef = doc.createNestedObject("p_layout_def");
 #endif
 
-    layoutDef["title"] = "ESP32 Field Node";
+    layoutDef["title"] = "ESP32 Temperature Sensor Node";
     layoutDef["type"] = "layout";
 
 #if ARDUINOJSON_VERSION_MAJOR >= 7
@@ -211,7 +211,7 @@ public:
   }
 
   // Parses executed command responses returned by Marveluzz Hub or Realtime WebSocket frame
-  static void parseIngestResponse(const String& jsonResponse, DeviceState& state,
+  static void parseIngestResponse(const String& jsonResponse, const String& cfgDeviceId, DeviceState& state,
                                    void (*onLedCommand)(bool newState)) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
     JsonDocument doc;
@@ -222,18 +222,42 @@ public:
     DeserializationError error = deserializeJson(doc, jsonResponse);
     if (error) return;
 
-    // Handle WebSocket postgres_changes event payload (EXCLUSIVE DOWNLINK COMMAND PATH)
-    if (doc["event"] == "postgres_changes") {
-      JsonObject payloadRecord = doc["payload"]["data"]["record"];
+    // Handle WebSocket command push event payload (INSERT / UPDATE / postgres_changes)
+    String eventStr = doc["event"] | "";
+    String payloadType = doc["payload"]["type"] | "";
+
+    if (eventStr == "INSERT" || eventStr == "UPDATE" || eventStr == "postgres_changes" || payloadType == "INSERT" || payloadType == "UPDATE") {
+      JsonObject payloadRecord = doc["payload"]["record"].as<JsonObject>();
+      if (payloadRecord.isNull()) {
+        payloadRecord = doc["payload"]["data"]["record"].as<JsonObject>();
+      }
+
       if (!payloadRecord.isNull()) {
+        // Defense-in-depth: Verify payload device_id matches local cfgDeviceId
+        const char* recDeviceId = payloadRecord["device_id"];
+        if (recDeviceId != nullptr && cfgDeviceId.length() > 0 && String(recDeviceId) != cfgDeviceId) {
+          return;
+        }
+
         const char* target = payloadRecord["target"];
-        if (target != nullptr && String(target) == "led_toggle") {
-          bool val = (String(payloadRecord["action"] | "") == "set_value")
-                       ? payloadRecord["value"].as<bool>()
-                       : !state.ledState;
-          state.ledState = val;
-          if (onLedCommand != nullptr) {
-            onLedCommand(state.ledState);
+        if (target != nullptr) {
+          String targetStr = String(target);
+          if (targetStr == "viewers_active") {
+            bool active = payloadRecord["value"].as<bool>();
+            state.viewersActive = active;
+            state.streamIntervalMs = getStreamIntervalMs(active);
+            Serial.printf("⚡ Viewer Presence Changed via WebSocket Push -> %s (%lums cadence)\n",
+                          active ? "5s Fast Mode" : "30s Power-Save Mode",
+                          state.streamIntervalMs);
+          } else if (targetStr == "led_toggle" || targetStr == "fan_toggle") {
+            String actionStr = payloadRecord["action"] | "";
+            bool val = (actionStr == "set_value")
+                         ? payloadRecord["value"].as<bool>()
+                         : !state.ledState;
+            state.ledState = val;
+            if (onLedCommand != nullptr) {
+              onLedCommand(state.ledState);
+            }
           }
         }
       }

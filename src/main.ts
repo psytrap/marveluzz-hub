@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.27";
+const APP_VERSION = "1.0.28";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -429,9 +429,18 @@ async function handler(req: Request): Promise<Response> {
             sseClients.set(deviceId, new Set());
           }
           const clientSet = sseClients.get(deviceId)!;
+          const wasActive = clientSet.size > 0;
           clientSet.add(controller);
-          if (mockDb) {
-            mockDb.updateDeviceViewersActive(deviceId, true);
+
+          // Trigger viewers_active command dispatch over Realtime WebSockets when first viewer connects
+          if (!wasActive) {
+            if (supabase) {
+              supabase.from("devices").update({ viewers_active: true, viewers_last_seen: new Date().toISOString() }).eq("id", deviceId).then(() => {});
+              supabase.from("device_commands").insert({ device_id: deviceId, target: "viewers_active", action: "set_value", value: true, status: "pending" }).then(() => {});
+            } else if (mockDb) {
+              mockDb.updateDeviceViewersActive(deviceId, true);
+              mockDb.queueCommand(deviceId, "viewers_active", "set_value", true);
+            }
           }
 
           // Initial connection handshake
@@ -445,8 +454,15 @@ async function handler(req: Request): Promise<Response> {
             } catch (_) {
               clearInterval(intervalId);
               clientSet.delete(controller);
-              if (mockDb) {
-                mockDb.updateDeviceViewersActive(deviceId, clientSet.size > 0);
+              const isActive = clientSet.size > 0;
+              if (!isActive) {
+                if (supabase) {
+                  supabase.from("devices").update({ viewers_active: false, viewers_last_seen: new Date().toISOString() }).eq("id", deviceId).then(() => {});
+                  supabase.from("device_commands").insert({ device_id: deviceId, target: "viewers_active", action: "set_value", value: false, status: "pending" }).then(() => {});
+                } else if (mockDb) {
+                  mockDb.updateDeviceViewersActive(deviceId, false);
+                  mockDb.queueCommand(deviceId, "viewers_active", "set_value", false);
+                }
               }
             }
           }, 15000);
@@ -455,8 +471,15 @@ async function handler(req: Request): Promise<Response> {
           if (intervalId) clearInterval(intervalId);
           if (sseClients.has(deviceId)) {
             const clientSet = sseClients.get(deviceId)!;
-            if (mockDb) {
-              mockDb.updateDeviceViewersActive(deviceId, clientSet.size > 0);
+            const isActive = clientSet.size > 0;
+            if (!isActive) {
+              if (supabase) {
+                supabase.from("devices").update({ viewers_active: false, viewers_last_seen: new Date().toISOString() }).eq("id", deviceId).then(() => {});
+                supabase.from("device_commands").insert({ device_id: deviceId, target: "viewers_active", action: "set_value", value: false, status: "pending" }).then(() => {});
+              } else if (mockDb) {
+                mockDb.updateDeviceViewersActive(deviceId, false);
+                mockDb.queueCommand(deviceId, "viewers_active", "set_value", false);
+              }
             }
           }
         }

@@ -64,7 +64,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       break;
     case WStype_TEXT:
       Serial.printf("⚡ Instant WebSocket Push Received: %s\n", payload);
-      TelemetryLogic::parseIngestResponse(String((char*)payload), deviceState, applyLedHardwareState);
+      TelemetryLogic::parseIngestResponse(String((char*)payload), cfgDeviceId, deviceState, applyLedHardwareState);
       break;
     default:
       break;
@@ -286,7 +286,7 @@ void sendTelemetry() {
     Serial.printf("✅ Telemetry Ingest Response: %s\n", response.c_str());
 
     // Update viewers_active presence stream mode (Commands are strictly WebSocket-only)
-    TelemetryLogic::parseIngestResponse(response, deviceState, applyLedHardwareState);
+    TelemetryLogic::parseIngestResponse(response, cfgDeviceId, deviceState, applyLedHardwareState);
   } else {
     Serial.printf("❌ Telemetry Ingest Error %d: %s\n", httpCode, http.getString().c_str());
   }
@@ -303,7 +303,7 @@ void setup() {
   pinMode(EMERGENCY_BTN_PIN, INPUT_PULLUP);
   digitalWrite(LED_PIN, LOW);
 
-  Serial.println("\n🚀 Booting ESP32 Marveluzz Field Node...");
+  Serial.println("\n🚀 Booting ESP32 Temperature Sensor Node...");
 
   bool hasConfig = loadConfig();
 

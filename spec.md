@@ -388,6 +388,42 @@ To prevent multi-user command race conditions while ensuring fluid usability acr
 
 ---
 
+#### Sequence Diagram 1: Realtime Viewer Presence (`viewers_active`) & Instant Downlink Command Push Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant WebUI as "Web Dashboard (Browser Client)"
+    participant Supabase as "Supabase Cloud (PostgreSQL & Realtime)"
+    participant ESP32 as "IoT Node (ESP32 Microcontroller)"
+
+    Note over ESP32,Supabase: Boot & Direct WebSocket Connection
+    ESP32->>Supabase: Connect WSS /realtime/v1/websocket
+    ESP32->>Supabase: Send phx_join (topic: realtime:public:device_commands:device_id=eq.UUID)
+    Supabase-->>ESP32: phx_reply (status: ok)
+
+    Note over WebUI: Browser user opens Device Dashboard Tab
+    WebUI->>Supabase: UPDATE devices SET viewers_active = true
+    WebUI->>Supabase: INSERT INTO device_commands (target: "viewers_active", action: "set_value", value: true)
+
+    Note over Supabase,ESP32: Instant Realtime Push (<5ms)
+    Supabase-->>ESP32: WebSocket Push (INSERT / postgres_changes: target="viewers_active", value=true)
+    ESP32->>ESP32: Switch to 5s Fast Telemetry Stream Mode
+
+    Note over WebUI,ESP32: User triggers UI Control Action
+    WebUI->>Supabase: INSERT INTO device_commands (target: "led_toggle", action: "toggle", value: true)
+    Supabase-->>ESP32: WebSocket Push (INSERT: target="led_toggle", value=true)
+    ESP32->>ESP32: Execute Hardware Output (GPIO 2 HIGH)
+
+    Note over WebUI: Browser user closes Dashboard Tab
+    WebUI->>Supabase: UPDATE devices SET viewers_active = false
+    WebUI->>Supabase: INSERT INTO device_commands (target: "viewers_active", action: "set_value", value: false)
+    Supabase-->>ESP32: WebSocket Push (INSERT: target="viewers_active", value=false)
+    ESP32->>ESP32: Switch to 30s Power-Save Telemetry Stream Mode
+```
+
+---
+
 #### Sequence Diagram 2: Standalone Local & Integration Testing Sequence (Testing Path)
 
 ```mermaid

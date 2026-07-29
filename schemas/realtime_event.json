@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://marveluzz-hub.internal/schemas/realtime_event.json",
   "title": "Supabase Realtime WebSocket Event Schema",
-  "description": "JSON Schema for postgres_changes command push events received by IoT nodes over WebSockets.",
+  "description": "JSON Schema for real-time command push events received by IoT nodes over WebSockets.",
   "type": "object",
   "required": ["event", "topic", "payload"],
   "properties": {
     "event": {
       "type": "string",
-      "enum": ["postgres_changes"]
+      "enum": ["INSERT", "UPDATE", "postgres_changes"]
     },
     "topic": {
       "type": "string",
@@ -16,25 +16,20 @@
     },
     "payload": {
       "type": "object",
-      "required": ["data"],
+      "required": ["record"],
       "properties": {
-        "data": {
+        "type": { "type": "string", "enum": ["INSERT", "UPDATE"] },
+        "record": {
           "type": "object",
-          "required": ["record"],
+          "required": ["id", "device_id", "target", "action", "status"],
           "properties": {
-            "record": {
-              "type": "object",
-              "required": ["id", "device_id", "target", "action", "status"],
-              "properties": {
-                "id": { "type": "string", "format": "uuid" },
-                "device_id": { "type": "string", "format": "uuid" },
-                "target": { "type": "string" },
-                "action": { "type": "string" },
-                "value": {},
-                "status": { "type": "string" },
-                "created_at": { "type": "string" }
-              }
-            }
+            "id": { "type": "string", "format": "uuid" },
+            "device_id": { "type": "string", "format": "uuid" },
+            "target": { "type": "string" },
+            "action": { "type": "string" },
+            "value": {},
+            "status": { "type": "string" },
+            "created_at": { "type": "string" }
           }
         }
       }
