@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.21";
+const APP_VERSION = "1.0.22";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -730,6 +730,8 @@ async function handler(req: Request): Promise<Response> {
 
       let recordCount = 0;
       let status = "detached";
+      let layoutDefinition: unknown = null;
+      let telemetryLatest: unknown = null;
 
       if (supabase) {
         const { count } = await supabase
@@ -739,21 +741,29 @@ async function handler(req: Request): Promise<Response> {
 
         const { data: dev } = await supabase
           .from("devices")
-          .select("status")
+          .select("status, layout_definition, telemetry_latest")
           .eq("id", deviceId)
           .single();
 
         recordCount = count || 0;
         status = dev?.status || "detached";
+        layoutDefinition = dev?.layout_definition || null;
+        telemetryLatest = dev?.telemetry_latest || null;
       } else if (mockDb) {
         recordCount = mockDb.getHistory(deviceId, 1000).length;
         const dev = mockDb.devices.get(deviceId);
+        const uiDef = mockDb.uiDefinitions.get(deviceId);
+        const latestTelem = mockDb.telemetryLatest.get(deviceId);
         status = dev?.status || "detached";
+        layoutDefinition = uiDef?.layout_def || null;
+        telemetryLatest = latestTelem?.data || null;
       }
 
       return new Response(JSON.stringify({
         deviceId,
         status,
+        layout_definition: layoutDefinition,
+        telemetry_latest: telemetryLatest,
         telemetryHistoryRecords: recordCount,
         historyTtlDays: 7,
         estimatedBytes: recordCount * 128

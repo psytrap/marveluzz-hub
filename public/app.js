@@ -303,8 +303,33 @@ async function loadInitialData() {
   updateStatusBadge("initializing", "Initializing...");
 
   try {
-    const res = await fetch(`/api/devices/stats?device_id=${currentDeviceId}`);
-    const stats = await res.json();
+    let stats = null;
+    let layoutDef = null;
+    let telemetryLatest = null;
+
+    if (supabaseClient) {
+      const { data: dev } = await supabaseClient
+        .from("devices")
+        .select("status, layout_definition, telemetry_latest")
+        .eq("id", currentDeviceId)
+        .maybeSingle();
+
+      if (dev) {
+        stats = { status: dev.status };
+        layoutDef = dev.layout_definition;
+        telemetryLatest = dev.telemetry_latest;
+      }
+    }
+
+    if (!layoutDef || !stats) {
+      const res = await fetch(`/api/devices/stats?device_id=${currentDeviceId}`);
+      const apiStats = await res.json();
+      if (apiStats && apiStats.status) {
+        stats = apiStats;
+        layoutDef = apiStats.layout_definition || layoutDef;
+        telemetryLatest = apiStats.telemetry_latest || telemetryLatest;
+      }
+    }
 
     if (stats && stats.status) {
       lastSeenTimestamp = Date.now();
@@ -313,10 +338,10 @@ async function loadInitialData() {
       updateStatusBadge("detached", "Detached");
     }
 
-    if (stats && stats.layout_definition) {
-      renderUIDefinition(stats.layout_definition);
-      if (stats.telemetry_latest) {
-        updateTelemetryValues(stats.telemetry_latest);
+    if (layoutDef) {
+      renderUIDefinition(layoutDef);
+      if (telemetryLatest) {
+        updateTelemetryValues(telemetryLatest);
       }
     } else {
       // Render Awaiting Schema Empty State if device has never uploaded a layout schema to DB

@@ -72,6 +72,31 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     assertEquals(devRecord, undefined);
   });
 
+  await t.step("Asserts offline/detached devices retain and return stored DB layout schema for WebUI restoration", () => {
+    const db = new MockSupabaseEngine();
+    const layout = {
+      title: "Offline ESP32 Sensor Node",
+      type: "layout",
+      layout: [{ type: "number", properties: { label: "Temperature", id: "temp", value: "22.5" } }]
+    };
+
+    // Register layout and simulate device going offline/detached
+    db.registerUIDefinition(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, layout);
+    db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temp: "22.5" });
+
+    const dev = db.devices.get(MOCK_DEVICE_ID);
+    if (dev) dev.status = "detached"; // Device is offline/detached
+
+    // Verify stored DB layout and latest telemetry remain preserved for offline rendering
+    const storedUiDef = db.uiDefinitions.get(MOCK_DEVICE_ID);
+    assert(storedUiDef !== undefined);
+    assertEquals(storedUiDef?.layout_def.title, "Offline ESP32 Sensor Node");
+
+    const latestTelem = db.telemetryLatest.get(MOCK_DEVICE_ID);
+    assert(latestTelem !== undefined);
+    assertEquals(latestTelem?.data.temp, "22.5");
+  });
+
   await t.step("Enforces secret key authentication and rejects invalid keys", () => {
     const db = new MockSupabaseEngine();
 

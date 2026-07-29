@@ -7,6 +7,9 @@
   - Benchmark connection re-establishment latency and optimize heartbeat auto-reconnect routines.
 
 ## 🎨 UI & Design
+- [ ] **Investigate & Fix Live Device State Management**:
+  - Audit status transitions between `live`, `control`, `detached`, `stale`, and `disconnected`.
+  - Fix edge cases where background keepalive timers or incoming telemetry events incorrectly override status badges or control button visibility across multi-tab web UI views and directory pages.
 - [ ] **UI General Cleanup**: Polish overall Hub dashboard UI — review spacing, typography consistency, widget alignment, empty states, and loading skeletons.
 - [ ] **Smart Stale & Disconnection Detection**: Refactor client-side keepalive timer into an adaptive heartbeat state machine based on active telemetry stream rates and network jitter.
 - [ ] **Device Storage Stats Page** (`/devices/stats?device_id=...`): Implement dedicated storage footprint metrics, retention policy configuration, and secret key rotation page.
