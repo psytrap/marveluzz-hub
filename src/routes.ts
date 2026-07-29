@@ -352,7 +352,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       }
 
       if (target === "viewers_active") {
-        const isActive = Boolean(value);
+        const isActive = value === true || value === "true";
         if (supabase) {
           await supabase
             .from("devices")
