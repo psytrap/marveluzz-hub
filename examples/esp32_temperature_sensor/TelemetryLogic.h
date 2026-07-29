@@ -18,7 +18,7 @@ struct DeviceState {
   bool connected = false;
   bool wsConnected = false;
   bool layoutSent = false;
-  bool relayState = false;
+  bool ledState = false;
   bool viewersActive = true;
   bool hasFault = false;
   const char* faultCode = nullptr;
@@ -123,7 +123,7 @@ public:
 #else
     JsonArray layout = layoutDef.createNestedArray("layout");
 #endif
-    
+
     // 1. Status Indicator
     JsonObject item1 = layout.add<JsonObject>();
     item1["type"] = "indicator";
@@ -140,12 +140,12 @@ public:
     prop2["id"] = "temperature";
     prop2["readonly"] = "true";
 
-    // 3. Water Pump Relay Switch Button
+    // 3. Status LED Light Switch Button
     JsonObject item3 = layout.add<JsonObject>();
     item3["type"] = "button";
     JsonObject prop3 = item3["properties"].to<JsonObject>();
-    prop3["label"] = "Water Pump Relay";
-    prop3["id"] = "pump_relay";
+    prop3["label"] = "Status LED Light";
+    prop3["id"] = "led_toggle";
 
     // 4. Device Uptime Text
     JsonObject item4 = layout.add<JsonObject>();
@@ -161,9 +161,9 @@ public:
   }
 
   // Generates JSON Telemetry snapshot payload for ingest_telemetry RPC
-  static String buildTelemetryJson(const String& deviceId, const String& deviceKey, 
-                                  float temp, bool relayState, unsigned long uptimeSec, 
-                                  bool viewersActive, bool hasFault) {
+  static String buildTelemetryJson(const String& deviceId, const String& deviceKey,
+                                   float temp, bool ledState, unsigned long uptimeSec,
+                                   bool viewersActive, bool hasFault) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
     JsonDocument doc;
 #else
@@ -180,12 +180,12 @@ public:
 #endif
 
     telemetry["temperature"] = round(temp * 10.0) / 10.0;
-    telemetry["pump_relay"] = relayState;
+    telemetry["led_toggle"] = ledState;
     telemetry["uptime"] = formatUptime(uptimeSec);
     telemetry["viewers_active"] = viewersActive;
     telemetry["power_save_mode"] = !viewersActive;
     telemetry["status_text"] = getStatusText(hasFault, viewersActive);
-    
+
     if (hasFault) {
       telemetry["fault_code"] = "E-04";
       telemetry["emergency_stop"] = true;
@@ -197,8 +197,8 @@ public:
   }
 
   // Parses executed command responses returned by Marveluzz Hub or Realtime WebSocket frame
-  static void parseIngestResponse(const String& jsonResponse, DeviceState& state, 
-                                  void (*onRelayCommand)(bool newState)) {
+  static void parseIngestResponse(const String& jsonResponse, DeviceState& state,
+                                   void (*onLedCommand)(bool newState)) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
     JsonDocument doc;
 #else
@@ -213,11 +213,11 @@ public:
       JsonObject payloadRecord = doc["payload"]["data"]["record"];
       if (!payloadRecord.isNull()) {
         const char* target = payloadRecord["target"];
-        if (target != nullptr && String(target) == "pump_relay") {
-          bool val = payloadRecord["value"] | !state.relayState;
-          state.relayState = val;
-          if (onRelayCommand != nullptr) {
-            onRelayCommand(state.relayState);
+        if (target != nullptr && String(target) == "led_toggle") {
+          bool val = payloadRecord["value"] | !state.ledState;
+          state.ledState = val;
+          if (onLedCommand != nullptr) {
+            onLedCommand(state.ledState);
           }
         }
       }
@@ -231,11 +231,11 @@ public:
         const char* target = cmd["target"];
         if (target == nullptr) continue;
 
-        if (String(target) == "pump_relay") {
-          bool val = cmd["value"] | !state.relayState;
-          state.relayState = val;
-          if (onRelayCommand != nullptr) {
-            onRelayCommand(state.relayState);
+        if (String(target) == "led_toggle") {
+          bool val = cmd["value"] | !state.ledState;
+          state.ledState = val;
+          if (onLedCommand != nullptr) {
+            onLedCommand(state.ledState);
           }
         } else if (String(target) == "viewers_active") {
           bool val = cmd["value"] | true;

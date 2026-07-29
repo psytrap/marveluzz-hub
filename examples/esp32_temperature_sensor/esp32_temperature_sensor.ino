@@ -1,11 +1,11 @@
 /*
  * Marveluzz Hub - ESP32 Hardware Microcontroller Firmware
  * Direct Supabase Cloud Ingest & Command Dispatch Engine
- * 
+ *
  * Hardware Config:
  * - ESP32 Microcontroller Board
  * - DS18B20 OneWire Temperature Sensor (Pin GPIO 4)
- * - Relay Switch Output (Pin GPIO 26)
+ * - LED Toggle Digital Output (Pin GPIO 2 - Onboard / External LED)
  * - Emergency Hardware Fault Button (Pin GPIO 27)
  *
  * PROVISIONING & WIFI CONFIGURATION:
@@ -34,16 +34,16 @@ String cfgAnonKey;
 String cfgDeviceId;
 String cfgDeviceKey;
 
-const int RELAY_PIN = 26;
+const int LED_PIN = 2; // GPIO 2 (Onboard LED or External LED with 220Ω resistor)
 const int EMERGENCY_BTN_PIN = 27;
 
 DeviceState deviceState;
 unsigned long lastUpdateMs = 0;
 
-void applyRelayHardwareState(bool active) {
-  deviceState.relayState = active;
-  digitalWrite(RELAY_PIN, deviceState.relayState ? HIGH : LOW);
-  Serial.printf("⚡ Relay Hardware Switched: %s\n", deviceState.relayState ? "ON" : "OFF");
+void applyLedHardwareState(bool active) {
+  deviceState.ledState = active;
+  digitalWrite(LED_PIN, deviceState.ledState ? HIGH : LOW);
+  Serial.printf("💡 LED Hardware Output Switched: %s\n", deviceState.ledState ? "ON" : "OFF");
 }
 
 // -------------------------------------------------------------
@@ -86,10 +86,23 @@ String getChipUUID() {
   uint64_t chipId = ESP.getEfuseMac();
   uint32_t macLow = (uint32_t)(chipId);
   uint16_t macHigh = (uint16_t)(chipId >> 32);
-  
+
   char uuidBuf[37];
   snprintf(uuidBuf, sizeof(uuidBuf), "e5320000-0000-4000-8000-%04x%08x", macHigh, macLow);
   return String(uuidBuf);
+}
+
+bool isValidUUID(const String& str) {
+  if (str.length() != 36) return false;
+  for (size_t i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (c != '-') return false;
+    } else {
+      if (!isHexadecimalDigit(c)) return false;
+    }
+  }
+  return true;
 }
 
 bool loadConfig() {
@@ -136,19 +149,6 @@ void flushSerialInput() {
     Serial.read();
     delay(2);
   }
-}
-
-bool isValidUUID(const String& str) {
-  if (str.length() != 36) return false;
-  for (size_t i = 0; i < str.length(); i++) {
-    char c = str.charAt(i);
-    if (i == 8 || i == 13 || i == 18 || i == 23) {
-      if (c != '-') return false;
-    } else {
-      if (!isHexadecimalDigit(c)) return false;
-    }
-  }
-  return true;
 }
 
 void runSerialProvisioning() {
@@ -229,13 +229,13 @@ void sendTelemetryAndPollCommands() {
   }
 
   String jsonPayload = TelemetryLogic::buildTelemetryJson(
-    cfgDeviceId, cfgDeviceKey, temperatureC, deviceState.relayState, 
+    cfgDeviceId, cfgDeviceKey, temperatureC, deviceState.ledState,
     uptimeSec, deviceState.viewersActive, deviceState.hasFault
   );
 
-  Serial.printf("📡 Sending Telemetry [%s] -> Temp=%.1f C, Relay=%s, Fault=%s...\n", 
+  Serial.printf("📡 Sending Telemetry [%s] -> Temp=%.1f C, LED=%s, Fault=%s...\n",
                 deviceState.viewersActive ? "5s Fast Mode" : "30s Power-Save Mode",
-                temperatureC, deviceState.relayState ? "ON" : "OFF",
+                temperatureC, deviceState.ledState ? "ON" : "OFF",
                 deviceState.hasFault ? "E-04" : "None");
 
   int httpCode = http.POST(jsonPayload);
@@ -244,7 +244,7 @@ void sendTelemetryAndPollCommands() {
     Serial.printf("✅ Telemetry Ingest Response: %s\n", response.c_str());
 
     // Decode and apply executed commands returned from Marveluzz Hub
-    TelemetryLogic::parseIngestResponse(response, deviceState, applyRelayHardwareState);
+    TelemetryLogic::parseIngestResponse(response, deviceState, applyLedHardwareState);
   } else {
     Serial.printf("❌ Telemetry Ingest Error %d: %s\n", httpCode, http.getString().c_str());
   }
@@ -257,9 +257,9 @@ void sendTelemetryAndPollCommands() {
 // -------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
   pinMode(EMERGENCY_BTN_PIN, INPUT_PULLUP);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
 
   Serial.println("\n🚀 Booting ESP32 Marveluzz Field Node...");
 

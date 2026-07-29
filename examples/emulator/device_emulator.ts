@@ -390,7 +390,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
       log("⚡ Incoming Command Executed (" + source + ") -> Target: '" + cmd.target + "', Action: " + cmd.action + ", Value: " + JSON.stringify(cmd.value), "Command");
 
-      if (cmd.target === "fan_toggle") {
+      if (cmd.target === "led_toggle" || cmd.target === "fan_toggle") {
         if (cmd.action === "toggle") {
           fanVal = !fanVal;
         } else if (cmd.action === "set_value") {
@@ -551,7 +551,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         type: "layout",
         layout: [
           { type: "number", properties: { label: "DS18B20 Temperature (°C)", id: "temperature", value: String(tempVal), readonly: "true" } },
-          { type: "button", properties: { label: "Cooling Fan Switch", id: "fan_toggle", value: String(fanVal) } },
+          { type: "button", properties: { label: "Status LED Light", id: "led_toggle", value: String(fanVal) } },
           { type: "text", properties: { label: "Device Uptime", id: "uptime", value: "0s", readonly: "true" } }
         ]
       };
@@ -707,7 +707,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         const telemetryData = {
           temperature: Number(tempVal.toFixed(1)),
-          fan_toggle: fanVal,
+          led_toggle: fanVal,
           uptime: uptimeSec + "s",
           viewers_active: viewersActive,
           power_save_mode: !viewersActive,
