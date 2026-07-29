@@ -335,18 +335,19 @@ To prevent multi-user command race conditions while ensuring fluid usability acr
 | **Active Controller (You)** | `controller_session_id == currentSessionId` | **`Control (You)`** | **`Release Control`** | Enabled (Interactive Control) |
 | **Other Session Controlling** | `controller_session_id != currentSessionId` | **`Live (In Use)`** | **`Take Over Control`** | Locked (`disabled` overlay) |
 
-4. **Device Directory Page (`/devices`) UI Specification**:
+4. **Device Directory Page (`/` Default Landing) UI Specification**:
+   - **Default Landing Page**: Visiting `/` without a `device_id` query parameter defaults directly to the **Device Directory**.
    - **Dedicated Directory Header**: The Device Directory page renders its own clean header state:
      - Header title is set to **"Device Directory"**.
      - Single-device **UUID element (`#device-uuid-display`) is hidden** (`display: none`).
      - **`Acquire Control` button (`#btn-control`) is hidden** (`display: none`).
      - **Status badge (`#status-badge`) is hidden** (`display: none`).
-     - Header navigation link toggles to **"Device Panel"** (`href="/"`).
-   - **Input Lock Isolation**: `toggleInputLockOverlay` is strictly scoped to `.widget-card` elements on single-device panels and **never** disables action buttons on `/devices`.
+     - **Navigation Directory button (`#nav-directory-btn`) is hidden** (`display: none`) since the user is already on the directory.
+   - **Input Lock Isolation**: `toggleInputLockOverlay` is strictly scoped to `.widget-card` elements on single-device panels and **never** disables action buttons on directory listings.
    - Each device row card renders:
      - **Status Badge**: Real-time state indicator (`live`, `control`, `detached`, `stale`).
      - **Copyable Monospace UUID Pill**: `UUID: <deviceId>` (`user-select: all`).
-     - **`Open Panel` Action Link**: Opens device panel in view mode (`/?device_id=<deviceId>`).
+     - **`Open Panel` Action Link**: Opens device panel (`/?device_id=<deviceId>`).
      - **`Wipe Data` Action Button**: Deletes telemetry logs & schema for that device.
 
 ---

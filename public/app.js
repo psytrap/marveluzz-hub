@@ -18,9 +18,9 @@ let isControlAcquired = false;
 // 1. App Initialization & Page Routing
 // -------------------------------------------------------------
 async function initApp() {
-  const isDirectoryPage = window.location.pathname === "/devices";
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("device_id")) {
+  const hasDeviceIdParam = urlParams.has("device_id");
+  if (hasDeviceIdParam) {
     currentDeviceId = urlParams.get("device_id");
   }
 
@@ -44,7 +44,7 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
-    if (isDirectoryPage) {
+    if (!hasDeviceIdParam) {
       loadDeviceDirectory();
     } else {
       const uuidDisplay = document.getElementById("device-uuid-display");
@@ -56,8 +56,9 @@ async function initApp() {
       if (statusBadge) statusBadge.style.display = "inline-flex";
       if (uuidEl) uuidEl.textContent = currentDeviceId;
       if (navDirBtn) {
+        navDirBtn.style.display = "inline-block";
         navDirBtn.textContent = "Device Directory";
-        navDirBtn.setAttribute("href", "/devices");
+        navDirBtn.setAttribute("href", "/");
       }
 
       loadInitialData();
@@ -180,8 +181,9 @@ function startKeepaliveStaleDetector() {
 }
 
 function toggleInputLockOverlay(isOwner) {
-  // Never disable action buttons on Device Directory page
-  if (window.location.pathname === "/devices") return;
+  // Never disable action buttons on Device Directory page (when no device_id param in URL)
+  const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
+  if (isDirectoryPage) return;
 
   const container = document.getElementById("layout-root");
   if (!container) return;
@@ -556,10 +558,7 @@ async function loadDeviceDirectory() {
   if (uuidDisplay) uuidDisplay.style.display = "none";
   if (statusBadge) statusBadge.style.display = "none";
   if (controlBtn) controlBtn.style.display = "none";
-  if (navDirBtn) {
-    navDirBtn.textContent = "Device Panel";
-    navDirBtn.setAttribute("href", "/");
-  }
+  if (navDirBtn) navDirBtn.style.display = "none";
 
   if (!container) return;
 
