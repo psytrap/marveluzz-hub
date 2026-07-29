@@ -131,6 +131,41 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       assertEquals(cmdList.length, 0);
     });
 
+    await t.step("Scenario: Web UI panel opens FIRST -> THEN ESP32 joins/boots -> initial telemetry response returns viewers_active=true", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const deviceKey = "secret_passcode_123";
+
+      // 1. Web UI panel opens FIRST and dispatches viewers_active = true
+      const cmdRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({
+          deviceId,
+          target: "viewers_active",
+          action: "set_value",
+          value: true
+        })
+      });
+      assertEquals(cmdRes.status, 200);
+      const cmdJson = await cmdRes.json();
+      assertEquals(cmdJson.success, true);
+
+      // 2. THEN ESP32 powers on and sends initial telemetry POST
+      const telemetryRes = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId,
+          deviceKey,
+          data: { temperature: 22.1, uptime: "0s" }
+        })
+      });
+      assertEquals(telemetryRes.status, 200);
+      const telemetryJson = await telemetryRes.json();
+      assertEquals(telemetryJson.success, true);
+      assertEquals(telemetryJson.viewers_active, true);
+    });
+
     await t.step("Logout routine invalidates active session and clears cookie", async () => {
       const logoutRes = await fetch(`${baseUrl}/logout`, {
         method: "GET",

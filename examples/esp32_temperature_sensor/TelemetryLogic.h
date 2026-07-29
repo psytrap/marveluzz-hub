@@ -238,8 +238,11 @@ public:
     // Handle WebSocket command push event payload (Strict Exclusive INSERT Downlink)
     String eventStr = doc["event"] | "";
     String payloadType = doc["payload"]["type"] | "";
+    if (payloadType.length() == 0) {
+      payloadType = doc["payload"]["data"]["type"] | "";
+    }
 
-    if (eventStr == "INSERT" || payloadType == "INSERT") {
+    if (eventStr == "INSERT" || payloadType == "INSERT" || (eventStr == "postgres_changes" && payloadType == "INSERT")) {
       JsonObject payloadRecord = doc["payload"]["record"].as<JsonObject>();
       if (payloadRecord.isNull()) {
         payloadRecord = doc["payload"]["data"]["record"].as<JsonObject>();

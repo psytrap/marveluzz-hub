@@ -558,7 +558,7 @@ async function toggleControlLease() {
   }
 }
 
-function updateViewerPresence(active) {
+async function updateViewerPresence(active) {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   if (isDirectoryPage || !currentDeviceId) return;
 
@@ -568,6 +568,27 @@ function updateViewerPresence(active) {
     action: "set_value",
     value: active
   });
+
+  try {
+    if (supabaseClient) {
+      await supabaseClient
+        .from("devices")
+        .update({ viewers_active: active, viewers_last_seen: new Date().toISOString() })
+        .eq("id", currentDeviceId);
+
+      await supabaseClient
+        .from("device_commands")
+        .insert({
+          device_id: currentDeviceId,
+          target: "viewers_active",
+          action: "set_value",
+          value: active,
+          status: "pending"
+        });
+    }
+  } catch (e) {
+    console.warn("Direct Supabase viewer presence update fallback to API:", e);
+  }
 
   if (active) {
     sendControlCommand("viewers_active", "set_value", true);
