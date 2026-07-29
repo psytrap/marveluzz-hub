@@ -219,31 +219,7 @@ async function updateViewerPresence(active) {
     value: active
   });
 
-  try {
-    if (window.supabaseClient) {
-      await window.supabaseClient
-        .from("devices")
-        .update({ viewers_active: active, viewers_last_seen: new Date().toISOString() })
-        .eq("id", currentDeviceId);
-
-      await window.supabaseClient
-        .from("device_commands")
-        .insert({
-          device_id: currentDeviceId,
-          target: "viewers_active",
-          action: "set_value",
-          value: active,
-          status: "pending"
-        });
-      return;
-    }
-  } catch (e) {
-    console.warn("Direct Supabase viewer presence update fallback to API:", e);
-  }
-
-  if (active) {
-    sendControlCommand("viewers_active", "set_value", true);
-  } else {
+  if (!active) {
     if (navigator.sendBeacon) {
       const blob = new Blob([payload], { type: "application/json" });
       navigator.sendBeacon("/api/device/command", blob);
@@ -255,7 +231,32 @@ async function updateViewerPresence(active) {
         keepalive: true
       });
     }
+    return;
   }
+
+  try {
+    if (window.supabaseClient) {
+      await window.supabaseClient
+        .from("devices")
+        .update({ viewers_active: true, viewers_last_seen: new Date().toISOString() })
+        .eq("id", currentDeviceId);
+
+      await window.supabaseClient
+        .from("device_commands")
+        .insert({
+          device_id: currentDeviceId,
+          target: "viewers_active",
+          action: "set_value",
+          value: true,
+          status: "pending"
+        });
+      return;
+    }
+  } catch (e) {
+    console.warn("Direct Supabase viewer presence update fallback to API:", e);
+  }
+
+  sendControlCommand("viewers_active", "set_value", true);
 }
 
 async function toggleControlLease() {
@@ -329,6 +330,12 @@ function releaseControlLeaseOnLeave() {
 
 window.addEventListener("beforeunload", releaseControlLeaseOnLeave);
 window.addEventListener("pagehide", releaseControlLeaseOnLeave);
+document.addEventListener("click", (e) => {
+  const targetLink = e.target.closest("#nav-directory-btn, a[href='/'], a[href='/devices']");
+  if (targetLink) {
+    releaseControlLeaseOnLeave();
+  }
+});
 
 window.loadInitialData = loadInitialData;
 window.renderUIDefinition = renderUIDefinition;

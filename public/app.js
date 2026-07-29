@@ -92,9 +92,12 @@ async function loadVersionAndSelfTest() {
     const testText = document.getElementById("self-test-text");
 
     if (uiEl && data.appVersion) uiEl.textContent = `v${data.appVersion}`;
-    if (dbEl) {
-      const schemaVer = data.actualSchemaVersion || data.requiredSchemaVersion || "20260728000000";
-      dbEl.textContent = (schemaVer === "rpc_error") ? "v20260728000000" : `v${schemaVer}`;
+    if (dbEl && data.appVersion) {
+      if (data.contractCompatible) {
+        dbEl.textContent = `v${data.appVersion}`;
+      } else {
+        dbEl.textContent = `v${data.appVersion} (Mismatch)`;
+      }
     }
 
     if (testBadge && testText) {

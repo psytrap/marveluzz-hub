@@ -166,6 +166,63 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       assertEquals(telemetryJson.viewers_active, true);
     });
 
+    await t.step("Scenario: Web UI panel with Control acquired is closed -> dispatches release_control_lease AND viewers_active=false -> subsequent telemetry returns viewers_active=false", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const deviceKey = "secret_passcode_123";
+
+      // 1. Acquire control lease & set viewers_active = true
+      const acquireRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "acquire_control_lease", action: "set_value", value: "test-session" })
+      });
+      assertEquals(acquireRes.status, 200);
+      await acquireRes.body?.cancel();
+
+      const activeRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "viewers_active", action: "set_value", value: true })
+      });
+      assertEquals(activeRes.status, 200);
+      await activeRes.body?.cancel();
+
+      // 2. Telemetry ingest while Control is active returns viewers_active = true
+      const telem1 = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, deviceKey, data: { temperature: 23.5 } })
+      });
+      const json1 = await telem1.json();
+      assertEquals(json1.viewers_active, true);
+
+      // 3. User switches to directory (releases control lease AND sets viewers_active = false)
+      const releaseRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "release_control_lease", action: "set_value", value: "test-session" })
+      });
+      assertEquals(releaseRes.status, 200);
+      await releaseRes.body?.cancel();
+
+      const inactiveRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "viewers_active", action: "set_value", value: false })
+      });
+      assertEquals(inactiveRes.status, 200);
+      await inactiveRes.body?.cancel();
+
+      // 4. Subsequent telemetry ingest returns viewers_active = false (30s Power-Save Mode)
+      const telem2 = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, deviceKey, data: { temperature: 23.6 } })
+      });
+      const json2 = await telem2.json();
+      assertEquals(json2.viewers_active, false);
+    });
+
     await t.step("Logout routine invalidates active session and clears cookie", async () => {
       const logoutRes = await fetch(`${baseUrl}/logout`, {
         method: "GET",

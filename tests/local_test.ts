@@ -205,6 +205,28 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     const activeRes = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 20.5 });
     assertEquals(activeRes[0].viewers_active, true);
   });
+
+  await t.step("Releasing control lease while active updates status to live and clearing viewers_active returns false for telemetry ingest", () => {
+    const db = new MockSupabaseEngine();
+    const sessionId = "control-session-999";
+
+    // 1. Acquire control and set viewers_active = true
+    db.acquireControlLease(MOCK_DEVICE_ID, sessionId);
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, true);
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.status, "control");
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.viewers_active, true);
+
+    // 2. Teardown on page leave: release control lease and update viewers_active = false
+    db.releaseControlLease(MOCK_DEVICE_ID, sessionId);
+    db.updateDeviceViewersActive(MOCK_DEVICE_ID, false);
+
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.status, "live");
+    assertEquals(db.devices.get(MOCK_DEVICE_ID)?.viewers_active, false);
+
+    // 3. Telemetry ingest returns viewers_active = false (30s Power-Save Mode)
+    const ingestRes = db.ingestTelemetry(MOCK_DEVICE_ID, MOCK_DEVICE_KEY, { temperature: 21.0 });
+    assertEquals(ingestRes[0].viewers_active, false);
+  });
 });
 
 Deno.test("Local Engine: Exclusive Control Lease & Storage Lifecycle", async (t) => {
