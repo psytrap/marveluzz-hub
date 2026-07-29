@@ -326,20 +326,12 @@ Similar to `Every-Panel`, `Marveluzz Hub` relies on device-driven UI definitions
 | `number` | `label`, `id` | `value` (initial display), `unit` | — | **Read-only.** Display updated by incoming telemetry key matching `id`. |
 | `indicator` | `label`, `id` | `value` (initial display), `unit` | — | **Read-only.** Display updated by incoming telemetry key matching `id`. |
 | `range` | `label`, `id` | `value` (initial position), `min`, `max`, `unit` | — | Dispatches `POST /api/device/command` (`set_value`) on slider release. |
-| `button` | `label`, `id` | — | **`value` MUST NOT be set** | Dispatches `POST /api/device/command` (`toggle`) on click. **Color state (blue=OFF / green=ON) is driven exclusively by live telemetry payload key matching `id` — never from layout registration.** |
+| `button` | `label`, `id` | — | **`value` MUST NOT be set** | Dispatches `POST /api/device/command` (`toggle`) on click. Button renders as a static blue action button. No color change. |
 | `text` | `label`, `id` | `value` (initial text) | — | **Read-only.** Text updated by incoming telemetry key matching `id`. |
 | `img` | `label`, `id` | `url` or `value` (initial src) | — | Image `src` updated dynamically when telemetry key matching `id` contains a URL. |
 | `divider` | — | — | — | Rendered as a 1px horizontal separator. No telemetry binding. |
 | `chart` | `label`, `id`, `target_key` | — | `value` | Real-time Chart.js time-series plot. `target_key` binds to the telemetry field to plot. |
 
-##### Button Color Convention
-
-| State | CSS Class | Color | Trigger Source |
-| :--- | :--- | :--- | :--- |
-| **OFF / Ready** | `.widget-btn` | Blue `#3b82f6` | Default on layout render |
-| **ON / Active** | `.widget-btn` + `.widget-btn-active` | Green `#16a34a` | Live telemetry: `data[id] === true` |
-
-Button color is **never** derived from the layout `value` property. It is applied exclusively by `updateTelemetryData()` in the Web UI when the ESP32 reports back the actual hardware state in its telemetry payload.
 
 ---
 

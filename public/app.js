@@ -508,13 +508,7 @@ function updateTelemetryData(data) {
   Object.keys(data).forEach(key => {
     const el = document.getElementById(`val-${key}`);
     if (el) {
-      if (el.tagName === "BUTTON") {
-        // Boolean telemetry → toggle active state on button widget
-        const isActive = data[key] === true || data[key] === "true" || data[key] === 1;
-        el.classList.toggle("widget-btn-active", isActive);
-      } else {
-        el.textContent = data[key];
-      }
+      el.textContent = data[key];
     }
 
     const imgEl = document.getElementById(`img-${key}`);
