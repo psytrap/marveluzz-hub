@@ -146,7 +146,7 @@ function updateStatusBadge(status, customLabel = null) {
         controlBtn.className = "btn-action";
         controlBtn.textContent = "Take Over Control";
       }
-    } else if (status === "live") {
+    } else if (status === "live" || status === "detached" || status === "stale") {
       controlBtn.style.display = "inline-block";
       controlBtn.className = "btn-action";
       controlBtn.textContent = "Acquire Control";
@@ -171,10 +171,13 @@ function startKeepaliveStaleDetector() {
 }
 
 function toggleInputLockOverlay(isOwner) {
+  // Never disable action buttons on Device Directory page
+  if (window.location.pathname === "/devices") return;
+
   const container = document.getElementById("layout-root");
   if (!container) return;
 
-  const interactiveElements = container.querySelectorAll("input, button, select");
+  const interactiveElements = container.querySelectorAll(".widget-card input, .widget-card button, .widget-card select");
   interactiveElements.forEach(el => {
     if (el.id !== "btn-control") {
       if (isOwner) {
@@ -535,7 +538,12 @@ async function sendControlCommand(target, action, value) {
 async function loadDeviceDirectory() {
   const container = document.getElementById("layout-root");
   const titleEl = document.getElementById("dashboard-title");
+  const uuidEl = document.getElementById("device-uuid-text");
+  const controlBtn = document.getElementById("btn-control");
+
   if (titleEl) titleEl.textContent = "Marveluzz Hub - Device Directory";
+  if (uuidEl) uuidEl.textContent = "Device Directory";
+  if (controlBtn) controlBtn.style.display = "none";
 
   if (!container) return;
 
@@ -572,12 +580,14 @@ async function loadDeviceDirectory() {
             </div>
             <span class="device-title">${dev.title}</span>
           </div>
-          <span class="device-uuid">${dev.deviceId}</span>
+          <div style="margin-top:6px;">
+            <span class="device-uuid" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-color); padding:3px 8px; border-radius:4px; font-size:11px; user-select:all; cursor:text;" title="Device UUID">UUID: ${dev.deviceId}</span>
+          </div>
         </div>
 
         <div class="device-actions">
-          <button class="btn-delete" onclick="wipeDeviceData('${dev.deviceId}')">Wipe Data</button>
-          <a href="/?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; padding:8px 16px;">Open Panel</a>
+          <a href="/?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; font-size:12px; padding:6px 12px;">Open Panel</a>
+          <button class="btn-delete" style="font-size:12px; padding:6px 12px;" onclick="wipeDeviceData('${dev.deviceId}')">Wipe Data</button>
         </div>
       `;
       dirContainer.appendChild(row);

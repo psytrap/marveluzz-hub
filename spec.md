@@ -312,31 +312,39 @@ Similar to `Every-Panel`, `Marveluzz Hub` relies on device-driven UI definitions
 
 ---
 
-#### 2.6.3 Control Lease Acquisition & Takeover Process
+#### 2.6.3 Per-Device Control Lease Architecture & Auto-Release Specification
 
-To prevent multi-user command race conditions while ensuring fluid usability across tabs and devices, Marveluzz Hub implements an exclusive single-controller lease lock architecture:
+To prevent multi-user command race conditions while ensuring fluid usability across tabs and devices, Marveluzz Hub implements an exclusive **per-device single-controller lease lock architecture**:
 
-1. **Session Identification & Persistence**:
-   - Each browser tab initializes a unique `currentSessionId` (`session_<random>`), which is persisted in `sessionStorage` (`marveluzz_session_id`).
-   - Refreshing or navigating within the same browser tab retains the same session ID.
+1. **Strict Per-Device Lease Scope**:
+   - Control lease ownership is **strictly bound per device ID (`deviceId`)**.
+   - Acquiring control on Device A (`32323232-3232-4232-8232-28c13340c86c`) claims `controller_session_id = currentSessionId` on Device A's record in `public.devices`.
+   - Device B (`99999999-9999-4999-8999-999999999999`) remains un-leased (`status = 'live'`, `controller_session_id = null`) and fully available for other controllers.
 
-2. **Lease Acquisition & Takeover Protocol**:
-   - **Acquiring Lease**: Clicking **Acquire Control** sends `POST /api/device/command` with `{ target: "acquire_lease", action: "acquire", value: currentSessionId }`.
-   - **Database State Update**: The server updates `public.devices` with `status = 'control'` and `controller_session_id = currentSessionId`.
-   - **Real-Time Broadcast**: Supabase Realtime emits a PostgreSQL WAL `UPDATE` event to all open dashboard instances.
-   - **Lease Takeover**: If another tab or user clicks **Take Over Control**, `controller_session_id` is updated to the new session ID. The previous controller automatically loses the lease.
+2. **Page-Lifespan Control Lease (Strict Auto-Release on Page Leave)**:
+   - A control lease exists **strictly for as long as the user actively remains on that specific device panel page (`/?device_id=...`)**.
+   - As soon as the user leaves the device page (closing tab, refreshing, navigating to `/devices`, or switching to another device), `public/app.js` triggers `releaseControlLeaseOnLeave()` via `beforeunload` and `pagehide` event listeners.
+   - Uses `navigator.sendBeacon` (or `fetch` with `keepalive: true`) to dispatch `target: "release_lease"` reliably during page unload.
+   - The server instantly clears `controller_session_id = null` and resets device status back to `live`, guaranteeing no orphaned control locks.
 
 3. **Status Badge & Control Overlay States Table**:
 
 | Controller State | Session Match | Status Badge Label | Action Button Text | Form Inputs State |
 | :--- | :--- | :--- | :--- | :--- |
-| **No Lease Active** | `controller_session_id == null` | **`Live`** | **`Acquire Control`** | Enabled |
-| **Active Controller (You)** | `controller_session_id == currentSessionId` | **`Control (You)`** | **`Release Control`** | Enabled |
+| **No Lease Active** | `controller_session_id == null` | **`Live`** | **`Acquire Control`** | Enabled (View Mode) |
+| **Active Controller (You)** | `controller_session_id == currentSessionId` | **`Control (You)`** | **`Release Control`** | Enabled (Interactive Control) |
 | **Other Session Controlling** | `controller_session_id != currentSessionId` | **`Live (In Use)`** | **`Take Over Control`** | Locked (`disabled` overlay) |
 
-4. **Releasing Lease**:
-   - Clicking **Release Control** sends `POST /api/device/command` with `{ target: "release_lease", action: "release", value: currentSessionId }`.
-   - The server sets `status = 'live'` and `controller_session_id = null`, returning all connected clients to default `Live` state.
+4. **Device Directory Page (`/devices`) UI Specification**:
+   - Header title sets to **"Device Directory"**.
+   - Header single-device UUID display shows **"Device Directory"**.
+   - **No Control Buttons on Directory**: The Device Directory page does **NOT** render an "Acquire Control" button on directory rows. Control can ONLY be acquired on the single device panel page itself.
+   - **Input Lock Isolation**: `toggleInputLockOverlay` is strictly scoped to `.widget-card` elements on single-device panels and **never** disables action buttons on `/devices`.
+   - Each device row card renders:
+     - **Status Badge**: Real-time state indicator (`live`, `control`, `detached`, `stale`).
+     - **Copyable Monospace UUID Pill**: `UUID: <deviceId>` (`user-select: all`).
+     - **`Open Panel` Action Link**: Opens device panel in view mode (`/?device_id=<deviceId>`).
+     - **`Wipe Data` Action Button**: Deletes telemetry logs & schema for that device.
 
 ---
 
