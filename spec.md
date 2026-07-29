@@ -634,3 +634,12 @@ IoT devices open a persistent HTTP `GET` stream (`Accept: text/event-stream`) to
 
 All active roadmap tasks and future enhancements are maintained in the single project backlog file:
 👉 **[TODO.md](TODO.md)**
+
+---
+
+## 8. Agent Behavioral Directives & Development Guidelines
+
+> [!IMPORTANT]
+> **Developer Directives for AI Assistants & Automated Tools:**
+> 1. **No Automated Git Actions**: Never execute `git` commands (`git add`, `git commit`, `git push`, etc.). All version control operations must be performed manually by the developer.
+> 2. **Explicit Test Justification**: Always explain the exact rationale and discuss proposed changes with the developer BEFORE modifying any test files (`tests/*.ts`).

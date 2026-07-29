@@ -307,14 +307,22 @@ Deno.test({
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Supabase WebSocket Connection Timeout")), 5000);
         ws.onopen = () => {
-          clearTimeout(timeout);
           ws.send(JSON.stringify({
             topic: `realtime:public:device_commands:device_id=eq.${TEST_DEVICE_ID}`,
             event: "phx_join",
             payload: {},
             ref: "1"
           }));
-          resolve();
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.data);
+            receivedEvents.push(parsed);
+            if (parsed.event === "phx_reply" || parsed.ref === "1") {
+              clearTimeout(timeout);
+              setTimeout(resolve, 200);
+            }
+          } catch (_) {}
         };
         ws.onerror = (err) => {
           clearTimeout(timeout);
@@ -394,14 +402,22 @@ Deno.test({
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Supabase WebSocket Connection Timeout")), 5000);
         ws.onopen = () => {
-          clearTimeout(timeout);
           ws.send(JSON.stringify({
             topic: `realtime:public:device_commands:device_id=eq.${TEST_DEVICE_ID}`,
             event: "phx_join",
             payload: {},
             ref: "1"
           }));
-          resolve();
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.data);
+            receivedEvents.push(parsed);
+            if (parsed.event === "phx_reply" || parsed.ref === "1") {
+              clearTimeout(timeout);
+              setTimeout(resolve, 200);
+            }
+          } catch (_) {}
         };
         ws.onerror = (err) => {
           clearTimeout(timeout);
