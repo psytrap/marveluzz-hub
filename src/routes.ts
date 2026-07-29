@@ -213,7 +213,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       actualSchemaVersion: actualVersion,
       contractCompatible: isCompatible,
       databaseMode
-    }), { headers: { "Content-Type": "application/json" } });
+    }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate"
+      }
+    });
   }
 
   // Memory & Diagnostic Endpoint

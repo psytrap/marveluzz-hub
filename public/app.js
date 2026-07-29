@@ -83,7 +83,7 @@ async function initApp() {
 
 async function loadVersionAndSelfTest() {
   try {
-    const res = await fetch("/api/health/self-test");
+    const res = await fetch("/api/health/self-test", { cache: "no-store" });
     const data = await res.json();
 
     const uiEl = document.getElementById("ui-version-badge");

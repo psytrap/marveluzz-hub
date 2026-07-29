@@ -291,8 +291,10 @@ public:
       JsonObject obj = doc.as<JsonObject>();
       if (!obj["viewers_active"].isNull()) {
         bool active = obj["viewers_active"].as<bool>();
-        state.viewersActive = active;
-        state.streamIntervalMs = getStreamIntervalMs(active);
+        if (!state.wsConnected || active || !state.viewersActive) {
+          state.viewersActive = active;
+          state.streamIntervalMs = getStreamIntervalMs(active);
+        }
       }
       return;
     }
@@ -301,8 +303,10 @@ public:
       for (JsonObject row : doc.as<JsonArray>()) {
         if (!row["viewers_active"].isNull()) {
           bool active = row["viewers_active"].as<bool>();
-          state.viewersActive = active;
-          state.streamIntervalMs = getStreamIntervalMs(active);
+          if (!state.wsConnected || active || !state.viewersActive) {
+            state.viewersActive = active;
+            state.streamIntervalMs = getStreamIntervalMs(active);
+          }
         }
       }
     }
