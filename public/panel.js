@@ -1,8 +1,12 @@
 // Marveluzz Hub - Single Device Panel Frontend Module (panel.js)
 
+let isLeaseReleased = false;
+
 async function loadInitialData() {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   if (isDirectoryPage) return;
+
+  isLeaseReleased = false;
 
   try {
     let hasLoadedLayout = false;
@@ -231,6 +235,7 @@ async function updateViewerPresence(active) {
           value: active,
           status: "pending"
         });
+      return;
     }
   } catch (e) {
     console.warn("Direct Supabase viewer presence update fallback to API:", e);
@@ -295,8 +300,9 @@ async function toggleControlLease() {
 
 function releaseControlLeaseOnLeave() {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
-  if (isDirectoryPage || !currentDeviceId) return;
+  if (isDirectoryPage || !currentDeviceId || isLeaseReleased) return;
 
+  isLeaseReleased = true;
   updateViewerPresence(false);
 
   if (isControlAcquired) {

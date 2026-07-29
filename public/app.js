@@ -203,30 +203,11 @@ function toggleInputLockOverlay(isOwner) {
 
   const cards = container.querySelectorAll(".widget-card");
   cards.forEach(card => {
-    const isInteractive = card.querySelector(".widget-range") || card.querySelector(".widget-btn");
+    const overlay = card.querySelector(".input-lock-overlay");
+    if (overlay) overlay.remove();
 
-    if (!isOwner && isInteractive) {
-      let overlay = card.querySelector(".input-lock-overlay");
-      if (!overlay) {
-        overlay = document.createElement("div");
-        overlay.className = "input-lock-overlay";
-        overlay.innerHTML = `
-          <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">View-Only Mode</div>
-          <div style="font-size:10px; opacity:0.8;">Acquire control lease to modify settings</div>
-        `;
-        card.appendChild(overlay);
-      }
-      overlay.style.display = "flex";
-
-      const inputs = card.querySelectorAll("input, button");
-      inputs.forEach(el => el.disabled = true);
-    } else {
-      const overlay = card.querySelector(".input-lock-overlay");
-      if (overlay) overlay.style.display = "none";
-
-      const inputs = card.querySelectorAll("input, button");
-      inputs.forEach(el => el.disabled = false);
-    }
+    const inputs = card.querySelectorAll("input, button");
+    inputs.forEach(el => el.disabled = !isOwner);
   });
 }
 
