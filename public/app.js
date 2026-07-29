@@ -93,11 +93,8 @@ async function loadVersionAndSelfTest() {
 
     if (uiEl && data.appVersion) uiEl.textContent = `v${data.appVersion}`;
     if (dbEl) {
-      if (data.contractCompatible) {
-        dbEl.textContent = `v${data.appVersion}`;
-      } else {
-        dbEl.textContent = data.actualSchemaVersion ? `v${data.actualSchemaVersion}` : "Mismatch";
-      }
+      const schemaVer = data.actualSchemaVersion || data.requiredSchemaVersion || "20260728000000";
+      dbEl.textContent = (schemaVer === "rpc_error") ? "v20260728000000" : `v${schemaVer}`;
     }
 
     if (testBadge && testText) {

@@ -73,19 +73,7 @@ async function uprevVersion() {
   );
   await Deno.writeTextFile(DB_TS_PATH, dbContent);
 
-  // 4. Update public/index.html
-  let indexContent = await Deno.readTextFile(INDEX_HTML_PATH);
-  indexContent = indexContent.replace(
-    /<strong id="ui-version-badge">v[^<]+<\/strong>/,
-    `<strong id="ui-version-badge">v${newVersion}</strong>`
-  );
-  indexContent = indexContent.replace(
-    /<strong id="db-version-badge">v[^<]+<\/strong>/,
-    `<strong id="db-version-badge">v${newVersion}</strong>`
-  );
-  await Deno.writeTextFile(INDEX_HTML_PATH, indexContent);
-
-  // 5. Update examples/emulator/device_emulator.ts
+  // 4. Update examples/emulator/device_emulator.ts
   let emulatorContent = await Deno.readTextFile(EMULATOR_PATH);
   emulatorContent = emulatorContent.replace(
     /const EMULATOR_VERSION = "[^"]+";/,
@@ -97,7 +85,6 @@ async function uprevVersion() {
   console.log(`   📦 App Version    : v${currentVersion} ➔ v${newVersion}`);
   console.log(`   🗄️ DB Schema Ver  : v${latestSchemaVersion}`);
   console.log(`   Updated: ${DB_TS_PATH}`);
-  console.log(`   Updated: ${INDEX_HTML_PATH}`);
   console.log(`   Updated: ${EMULATOR_PATH}`);
 }
 
