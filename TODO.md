@@ -1,5 +1,19 @@
 # Marveluzz Hub - Development TODO & Backlog
 
+## 🛠️ Codebase Structure & Refactoring
+- [ ] **Split `public/app.js` into Modular Scripts (`devices.js` & `panel.js`)**:
+  - Separate Device Directory page logic (`devices.js`) from Single Device Panel dashboard logic (`panel.js`) matching `every-panel` conventions.
+  - Create a shared `common.js` or `core.js` for status badges, session management, and Supabase client setup.
+- [ ] **Split `src/main.ts` into Server Sub-Modules**:
+  - Refactor monolithic `src/main.ts` into modular routes and services:
+    - `src/routes/telemetry.ts`: Telemetry ingest & layout registration endpoints.
+    - `src/routes/commands.ts`: Device command queueing & control lease management.
+    - `src/routes/auth.ts`: Session lifecycle & OAuth authentication.
+    - `src/services/supabase.ts`: Database client interface & mock engine wrapper.
+- [ ] **Relocate PostgreSQL Schema into Sub-Directory (`supabase/schema.sql` or `db/schema.sql`)**:
+  - Move root `supabase_schema.sql` into a dedicated database directory (`supabase/schema.sql` or `db/supabase_schema.sql`).
+  - Update `tests/local_test.ts` and `spec.md` file paths to reference the new location.
+
 ## 🛠️ Infrastructure & Edge Performance
 - [ ] **Investigate Deno Deploy Aggressive Spin-Down & Realtime Status**:
   - Analyze Deno Deploy serverless isolate spin-down cycles during idle periods.

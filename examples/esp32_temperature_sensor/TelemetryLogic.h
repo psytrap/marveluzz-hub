@@ -206,7 +206,6 @@ public:
 #endif
 
     telemetry["temperature"] = round(temp * 10.0) / 10.0;
-    telemetry["led_toggle"] = ledState;
     telemetry["led_state"] = ledState ? "ON" : "OFF";
     telemetry["uptime"] = formatUptime(uptimeSec);
     telemetry["viewers_active"] = viewersActive;
@@ -287,12 +286,13 @@ public:
       return;
     }
 
-    // Handle HTTP telemetry ingest response (Viewer presence stream mode updates ONLY)
+    // Handle HTTP telemetry ingest response (Updates viewers_active stream mode on boot / initial ingest)
     if (doc.is<JsonObject>()) {
       JsonObject obj = doc.as<JsonObject>();
       if (!obj["viewers_active"].isNull()) {
-        state.viewersActive = obj["viewers_active"].as<bool>();
-        state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
+        bool active = obj["viewers_active"].as<bool>();
+        state.viewersActive = active;
+        state.streamIntervalMs = getStreamIntervalMs(active);
       }
       return;
     }
@@ -300,8 +300,9 @@ public:
     if (doc.is<JsonArray>()) {
       for (JsonObject row : doc.as<JsonArray>()) {
         if (!row["viewers_active"].isNull()) {
-          state.viewersActive = row["viewers_active"].as<bool>();
-          state.streamIntervalMs = getStreamIntervalMs(state.viewersActive);
+          bool active = row["viewers_active"].as<bool>();
+          state.viewersActive = active;
+          state.streamIntervalMs = getStreamIntervalMs(active);
         }
       }
     }

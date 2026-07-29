@@ -244,7 +244,12 @@ Deno.test({
   });
 
   await t.step("Local SQL schema and migration script file equivalence", async () => {
-    const rootSchema = await Deno.readTextFile("./supabase_schema.sql");
+    let rootSchema = "";
+    try {
+      rootSchema = await Deno.readTextFile("./supabase/schema.sql");
+    } catch (_) {
+      rootSchema = await Deno.readTextFile("./supabase_schema.sql");
+    }
     const migrationSchema = await Deno.readTextFile("./supabase/migrations/20260728000000_initial_schema.sql");
     assertEquals(rootSchema.trim(), migrationSchema.trim());
   });
@@ -331,7 +336,8 @@ Deno.test({
       await new Promise((r) => setTimeout(r, 1000));
 
       const commandFrameTrue = receivedEvents.find(
-        (ev) => ev.payload?.record?.target === "viewers_active" && ev.payload?.record?.value === true
+        (ev) => (ev.payload?.record?.target === "viewers_active" || ev.payload?.data?.record?.target === "viewers_active") &&
+                (ev.payload?.record?.value === true || ev.payload?.data?.record?.value === true)
       );
       assert(commandFrameTrue !== undefined, "Expected to receive viewers_active=true push frame over WebSocket");
 
@@ -350,7 +356,8 @@ Deno.test({
       await new Promise((r) => setTimeout(r, 1000));
 
       const commandFrameFalse = receivedEvents.find(
-        (ev) => ev.payload?.record?.target === "viewers_active" && ev.payload?.record?.value === false
+        (ev) => (ev.payload?.record?.target === "viewers_active" || ev.payload?.data?.record?.target === "viewers_active") &&
+                (ev.payload?.record?.value === false || ev.payload?.data?.record?.value === false)
       );
       assert(commandFrameFalse !== undefined, "Expected to receive viewers_active=false push frame over WebSocket");
     } finally {

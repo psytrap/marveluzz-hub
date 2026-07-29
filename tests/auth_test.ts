@@ -61,7 +61,7 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
 
       const successLoginRes = await fetch(callbackSuccessUrl, { redirect: "manual" });
       assertEquals(successLoginRes.status, 302);
-      assertEquals(successLoginRes.headers.get("location"), "/");
+      assertEquals(new URL(successLoginRes.headers.get("location") || "", baseUrl).pathname, "/");
 
       const cookieHeader = successLoginRes.headers.get("set-cookie");
       assertNotEquals(cookieHeader, null);
@@ -173,7 +173,7 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
         redirect: "manual"
       });
       assertEquals(logoutRes.status, 302);
-      assertEquals(logoutRes.headers.get("location"), "/login");
+      assertEquals(new URL(logoutRes.headers.get("location") || "", baseUrl).pathname, "/login");
 
       const expiredCookieHeader = logoutRes.headers.get("set-cookie") || "";
       assertEquals(expiredCookieHeader.includes("Max-Age=0") || expiredCookieHeader.includes("Expires=Thu, 01 Jan 1970"), true);

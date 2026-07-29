@@ -458,8 +458,13 @@ Deno.test("Local Engine: Schema Parity & Session Unit Tests", async (t) => {
     assertEquals(schemaVer, "20260728000000");
   });
 
-  await t.step("Asserts 1:1 parity between supabase_schema.sql and migration file", async () => {
-    const rootSchema = await Deno.readTextFile("./supabase_schema.sql");
+  await t.step("Asserts 1:1 parity between supabase/schema.sql and migration file", async () => {
+    let rootSchema = "";
+    try {
+      rootSchema = await Deno.readTextFile("./supabase/schema.sql");
+    } catch (_) {
+      rootSchema = await Deno.readTextFile("./supabase_schema.sql");
+    }
     const migrationSchema = await Deno.readTextFile("./supabase/migrations/20260728000000_initial_schema.sql");
     assertEquals(rootSchema.trim(), migrationSchema.trim());
   });
