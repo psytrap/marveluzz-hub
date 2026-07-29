@@ -359,7 +359,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   // Protected Page Views
-  if (pathname === "/" || pathname === "/devices" || pathname === "/devices/manage" || pathname === "/devices/stats") {
+  if (pathname === "/" || pathname === "/devices" || pathname === "/manage" || pathname === "/stats" || pathname === "/devices/manage" || pathname === "/devices/stats") {
     const user = await getAuthenticatedUser();
     if (!user) {
       return new Response(null, { status: 302, headers: { "Location": `${url.origin}/login` } });

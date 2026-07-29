@@ -50,7 +50,10 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
-    const isManagePage = window.location.pathname.startsWith("/devices/manage") || window.location.pathname.startsWith("/devices/stats");
+    const isManagePage = window.location.pathname.startsWith("/manage") ||
+                         window.location.pathname.startsWith("/stats") ||
+                         window.location.pathname.startsWith("/devices/manage") ||
+                         window.location.pathname.startsWith("/devices/stats");
 
     if (isManagePage) {
       if (typeof loadDeviceManagementPage === "function") {
@@ -77,7 +80,8 @@ async function initApp() {
       }
       if (navManageBtn) {
         navManageBtn.style.display = "inline-block";
-        navManageBtn.setAttribute("href", `/devices/manage?device_id=${currentDeviceId}`);
+        navManageBtn.textContent = "Manage Device";
+        navManageBtn.setAttribute("href", `/manage?device_id=${currentDeviceId}`);
       }
 
       if (typeof loadInitialData === "function") loadInitialData();

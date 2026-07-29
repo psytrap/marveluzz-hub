@@ -106,8 +106,8 @@ async function loadDeviceDirectory() {
         </div>
 
         <div class="device-actions">
+          <a href="/manage?device_id=${dev.deviceId}" class="btn-action" style="text-decoration:none; font-size:12px; padding:6px 12px;">Manage</a>
           <a href="/devices?device_id=${dev.deviceId}" class="btn-action active-lease" style="text-decoration:none; font-size:12px; padding:6px 12px;">Open Panel</a>
-          <a href="/devices/manage?device_id=${dev.deviceId}" class="btn-action" style="text-decoration:none; font-size:12px; padding:6px 12px;">Manage</a>
         </div>
       `;
       dirContainer.appendChild(row);

@@ -25,7 +25,8 @@ async function loadDeviceManagementPage() {
   if (titleEl) titleEl.textContent = "Device Management";
   if (uuidDisplay) {
     uuidDisplay.style.display = "inline-flex";
-    uuidDisplay.innerHTML = `ID: <code>${deviceId}</code>`;
+    const uuidTextEl = document.getElementById("device-uuid-text");
+    if (uuidTextEl) uuidTextEl.textContent = deviceId;
   }
   if (statusBadge) statusBadge.style.display = "none";
   if (controlBtn) controlBtn.style.display = "none";
