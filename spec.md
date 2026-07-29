@@ -336,9 +336,12 @@ To prevent multi-user command race conditions while ensuring fluid usability acr
 | **Other Session Controlling** | `controller_session_id != currentSessionId` | **`Live (In Use)`** | **`Take Over Control`** | Locked (`disabled` overlay) |
 
 4. **Device Directory Page (`/devices`) UI Specification**:
-   - Header title sets to **"Device Directory"**.
-   - Header single-device UUID display shows **"Device Directory"**.
-   - **No Control Buttons on Directory**: The Device Directory page does **NOT** render an "Acquire Control" button on directory rows. Control can ONLY be acquired on the single device panel page itself.
+   - **Dedicated Directory Header**: The Device Directory page renders its own clean header state:
+     - Header title is set to **"Device Directory"**.
+     - Single-device **UUID element (`#device-uuid-display`) is hidden** (`display: none`).
+     - **`Acquire Control` button (`#btn-control`) is hidden** (`display: none`).
+     - **Status badge (`#status-badge`) is hidden** (`display: none`).
+     - Header navigation link toggles to **"Device Panel"** (`href="/"`).
    - **Input Lock Isolation**: `toggleInputLockOverlay` is strictly scoped to `.widget-card` elements on single-device panels and **never** disables action buttons on `/devices`.
    - Each device row card renders:
      - **Status Badge**: Real-time state indicator (`live`, `control`, `detached`, `stale`).

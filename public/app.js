@@ -44,13 +44,22 @@ async function initApp() {
       if (mockBadge) mockBadge.style.display = "inline-block";
     }
 
-    // Show active device UUID in header
-    const uuidEl = document.getElementById("device-uuid-text");
-    if (uuidEl) uuidEl.textContent = currentDeviceId;
-
     if (isDirectoryPage) {
       loadDeviceDirectory();
     } else {
+      const uuidDisplay = document.getElementById("device-uuid-display");
+      const statusBadge = document.getElementById("status-badge");
+      const uuidEl = document.getElementById("device-uuid-text");
+      const navDirBtn = document.getElementById("nav-directory-btn");
+
+      if (uuidDisplay) uuidDisplay.style.display = "inline-flex";
+      if (statusBadge) statusBadge.style.display = "inline-flex";
+      if (uuidEl) uuidEl.textContent = currentDeviceId;
+      if (navDirBtn) {
+        navDirBtn.textContent = "Device Directory";
+        navDirBtn.setAttribute("href", "/devices");
+      }
+
       loadInitialData();
       startKeepaliveStaleDetector();
     }
@@ -538,12 +547,19 @@ async function sendControlCommand(target, action, value) {
 async function loadDeviceDirectory() {
   const container = document.getElementById("layout-root");
   const titleEl = document.getElementById("dashboard-title");
-  const uuidEl = document.getElementById("device-uuid-text");
+  const uuidDisplay = document.getElementById("device-uuid-display");
+  const statusBadge = document.getElementById("status-badge");
   const controlBtn = document.getElementById("btn-control");
+  const navDirBtn = document.getElementById("nav-directory-btn");
 
-  if (titleEl) titleEl.textContent = "Marveluzz Hub - Device Directory";
-  if (uuidEl) uuidEl.textContent = "Device Directory";
+  if (titleEl) titleEl.textContent = "Device Directory";
+  if (uuidDisplay) uuidDisplay.style.display = "none";
+  if (statusBadge) statusBadge.style.display = "none";
   if (controlBtn) controlBtn.style.display = "none";
+  if (navDirBtn) {
+    navDirBtn.textContent = "Device Panel";
+    navDirBtn.setAttribute("href", "/");
+  }
 
   if (!container) return;
 
