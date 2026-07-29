@@ -5,36 +5,36 @@
  * Hardware Config:
  * - ESP32 Microcontroller Board
  * - DS18B20 OneWire Temperature Sensor (Pin GPIO 4)
- * - Relay Switch Output (Pin GPIO 5)
+ * - Relay Switch Output (Pin GPIO 26)
  * - Emergency Hardware Fault Button (Pin GPIO 27)
+ *
+ * PROVISIONING & WIFI CONFIGURATION:
+ * - Credentials (SSID, Password, Supabase URL, Device ID, Device Key) are saved to NVS Flash memory (Preferences.h).
+ * - On boot, type 'reset' in Serial Monitor (115200 baud) to wipe/reconfigure credentials.
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 
 #include "certificates.h"
 #include "TelemetryLogic.h"
 
 // -------------------------------------------------------------
-// 1. Network & Supabase Credentials
+// 1. Global State & NVS Flash Storage
 // -------------------------------------------------------------
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+Preferences prefs;
 
-// Supabase Direct Cloud Gateway URL & Anon Key
-const char* SUPABASE_URL = "https://qmketwlyeexumcxboagc.supabase.co";
-const char* SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // Publishable Key
+String cfgSsid;
+String cfgPass;
+String cfgSupabaseUrl;
+String cfgAnonKey;
+String cfgDeviceId;
+String cfgDeviceKey;
 
-// Unique Per-Device Credentials
-const char* DEVICE_ID = "32323232-3232-4232-8232-28c13340c86c";
-const char* DEVICE_KEY = "secret_passcode_123";
-
-// -------------------------------------------------------------
-// 2. Hardware Pin Assignments & Global State
-// -------------------------------------------------------------
-const int RELAY_PIN = 5;
+const int RELAY_PIN = 26;
 const int EMERGENCY_BTN_PIN = 27;
 
 DeviceState deviceState;
@@ -47,20 +47,151 @@ void applyRelayHardwareState(bool active) {
 }
 
 // -------------------------------------------------------------
+// 2. Serial Provisioning & NVS Flash Helpers
+// -------------------------------------------------------------
+String serialReadLine() {
+  String line = "";
+  while (true) {
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r') {
+        delay(10);
+        if (Serial.available() && Serial.peek() == '\n') Serial.read();
+        return line;
+      }
+      if (c == '\n') return line;
+      line += c;
+    }
+    delay(10);
+  }
+}
+
+String serialPrompt(const char* label, const String& defaultVal) {
+  bool isSecret = (strcmp(label, "WiFi Password") == 0 || strcmp(label, "Device Key") == 0);
+  if (defaultVal.length() > 0) {
+    if (isSecret) {
+      Serial.printf("  %s [********]: ", label);
+    } else {
+      Serial.printf("  %s [%s]: ", label, defaultVal.c_str());
+    }
+  } else {
+    Serial.printf("  %s: ", label);
+  }
+  String input = serialReadLine();
+  input.trim();
+  return (input.length() > 0) ? input : defaultVal;
+}
+
+String getChipUUID() {
+  uint64_t chipId = ESP.getEfuseMac();
+  uint32_t macLow = (uint32_t)(chipId);
+  uint16_t macHigh = (uint16_t)(chipId >> 32);
+  
+  char uuidBuf[37];
+  snprintf(uuidBuf, sizeof(uuidBuf), "e5320000-0000-4000-8000-%04x%08x", macHigh, macLow);
+  return String(uuidBuf);
+}
+
+bool loadConfig() {
+  prefs.begin("mh-config", true); // Read-only mode
+  cfgSsid        = prefs.getString("ssid", "");
+  cfgPass        = prefs.getString("pass", "");
+  cfgSupabaseUrl = prefs.getString("sb_url", "https://qmketwlyeexumcxboagc.supabase.co");
+  cfgAnonKey     = prefs.getString("anon_key", "");
+  cfgDeviceId    = prefs.getString("device_id", getChipUUID());
+  cfgDeviceKey   = prefs.getString("device_key", "secret_passcode_123");
+  prefs.end();
+
+  if (!isValidUUID(cfgDeviceId)) {
+    cfgDeviceId = getChipUUID();
+  }
+  if (cfgDeviceKey.equalsIgnoreCase("reset") || cfgDeviceKey.length() == 0) {
+    cfgDeviceKey = "secret_passcode_123";
+  }
+
+  return (cfgSsid.length() > 0 && cfgPass.length() > 0 && cfgSupabaseUrl.length() > 0);
+}
+
+void saveConfig() {
+  prefs.begin("mh-config", false); // Read-write mode
+  prefs.putString("ssid", cfgSsid);
+  prefs.putString("pass", cfgPass);
+  prefs.putString("sb_url", cfgSupabaseUrl);
+  prefs.putString("anon_key", cfgAnonKey);
+  prefs.putString("device_id", cfgDeviceId);
+  prefs.putString("device_key", cfgDeviceKey);
+  prefs.end();
+  Serial.println("✅ Config saved to NVS Flash memory.");
+}
+
+void clearConfig() {
+  prefs.begin("mh-config", false);
+  prefs.clear();
+  prefs.end();
+  Serial.println("🗑️ NVS Flash memory cleared.");
+}
+
+void flushSerialInput() {
+  while (Serial.available()) {
+    Serial.read();
+    delay(2);
+  }
+}
+
+bool isValidUUID(const String& str) {
+  if (str.length() != 36) return false;
+  for (size_t i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (c != '-') return false;
+    } else {
+      if (!isHexadecimalDigit(c)) return false;
+    }
+  }
+  return true;
+}
+
+void runSerialProvisioning() {
+  flushSerialInput();
+  Serial.println();
+  Serial.println("╔═════════════════════════════════════════════╗");
+  Serial.println("║    Marveluzz Hub ESP32 Wi-Fi Setup Engine   ║");
+  Serial.println("╚═════════════════════════════════════════════╝");
+  Serial.println("Enter values below (press Enter to keep default):");
+  Serial.println();
+
+  cfgSsid        = serialPrompt("WiFi SSID", cfgSsid);
+  cfgPass        = serialPrompt("WiFi Password", cfgPass);
+  cfgSupabaseUrl = serialPrompt("Supabase URL", cfgSupabaseUrl.length() > 0 ? cfgSupabaseUrl : String("https://qmketwlyeexumcxboagc.supabase.co"));
+  cfgAnonKey     = serialPrompt("Supabase Anon Key", cfgAnonKey);
+
+  String defaultDevId = isValidUUID(cfgDeviceId) ? cfgDeviceId : getChipUUID();
+  String inputDevId   = serialPrompt("Device UUID", defaultDevId);
+  cfgDeviceId         = isValidUUID(inputDevId) ? inputDevId : defaultDevId;
+
+  String defaultDevKey = (cfgDeviceKey.length() > 0 && !cfgDeviceKey.equalsIgnoreCase("reset")) ? cfgDeviceKey : String("secret_passcode_123");
+  cfgDeviceKey        = serialPrompt("Device Secret Key", defaultDevKey);
+
+  saveConfig();
+}
+
+// -------------------------------------------------------------
 // 3. Register Dynamic UI Layout Schema via TelemetryLogic
 // -------------------------------------------------------------
 void registerUILayout() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String endpoint = String(SUPABASE_URL) + "/rest/v1/rpc/register_ui_definition";
+  String endpoint = cfgSupabaseUrl + "/rest/v1/rpc/register_ui_definition";
 
   http.begin(endpoint);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("apikey", SUPABASE_ANON_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+  if (cfgAnonKey.length() > 0) {
+    http.addHeader("apikey", cfgAnonKey);
+    http.addHeader("Authorization", "Bearer " + cfgAnonKey);
+  }
 
-  String jsonPayload = TelemetryLogic::buildLayoutJson(DEVICE_ID, DEVICE_KEY);
+  String jsonPayload = TelemetryLogic::buildLayoutJson(cfgDeviceId, cfgDeviceKey);
 
   int httpCode = http.POST(jsonPayload);
   if (httpCode == 200 || httpCode == 204) {
@@ -79,12 +210,14 @@ void sendTelemetryAndPollCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String endpoint = String(SUPABASE_URL) + "/rest/v1/rpc/ingest_telemetry";
+  String endpoint = cfgSupabaseUrl + "/rest/v1/rpc/ingest_telemetry";
 
   http.begin(endpoint);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("apikey", SUPABASE_ANON_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+  if (cfgAnonKey.length() > 0) {
+    http.addHeader("apikey", cfgAnonKey);
+    http.addHeader("Authorization", "Bearer " + cfgAnonKey);
+  }
 
   // Read hardware status / simulated DS18B20 sensor reading
   float temperatureC = 23.5 + random(-10, 10) / 10.0;
@@ -96,7 +229,7 @@ void sendTelemetryAndPollCommands() {
   }
 
   String jsonPayload = TelemetryLogic::buildTelemetryJson(
-    DEVICE_ID, DEVICE_KEY, temperatureC, deviceState.relayState, 
+    cfgDeviceId, cfgDeviceKey, temperatureC, deviceState.relayState, 
     uptimeSec, deviceState.viewersActive, deviceState.hasFault
   );
 
@@ -129,21 +262,68 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);
 
   Serial.println("\n🚀 Booting ESP32 Marveluzz Field Node...");
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  bool hasConfig = loadConfig();
+
+  // Prompt user for 3 seconds to enter 'reset' if they wish to change Wi-Fi settings
+  Serial.println("⏱️ Press Enter or type 'reset' within 3 seconds to reconfigure Wi-Fi...");
+  unsigned long startWait = millis();
+  String initialInput = "";
+  while (millis() - startWait < 3000) {
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r' || c == '\n') break;
+      initialInput += c;
+    }
+    delay(10);
+  }
+  initialInput.trim();
+
+  if (!hasConfig || initialInput.equalsIgnoreCase("reset")) {
+    runSerialProvisioning();
+  }
+
+  Serial.println();
+  Serial.println("┌────────────────────────────────────────────────────────────────┐");
+  Serial.printf( "│  🆔 DEVICE UUID : %-44s │\n", cfgDeviceId.c_str());
+  Serial.println("└────────────────────────────────────────────────────────────────┘");
+  Serial.println();
+
+  Serial.printf("📶 Connecting to Wi-Fi SSID: '%s'...\n", cfgSsid.c_str());
+  WiFi.begin(cfgSsid.c_str(), cfgPass.c_str());
+
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 30) {
     delay(500);
     Serial.print(".");
+    retries++;
   }
-  Serial.println("\n📶 WiFi Connected. IP: " + WiFi.localIP().toString());
-  deviceState.connected = true;
 
-  registerUILayout();
-  sendTelemetryAndPollCommands();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n📶 Wi-Fi Connected Successfully! IP: " + WiFi.localIP().toString());
+    deviceState.connected = true;
+    registerUILayout();
+    sendTelemetryAndPollCommands();
+  } else {
+    Serial.println("\n❌ Wi-Fi Connection Failed!");
+    Serial.println("⚠️ Type 'reset' in Serial Monitor and restart to update your Wi-Fi credentials.");
+  }
+
   lastUpdateMs = millis();
 }
 
 void loop() {
+  // Listen for 'reset' command typed into Serial Monitor while running
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.equalsIgnoreCase("reset")) {
+      clearConfig();
+      runSerialProvisioning();
+      ESP.restart();
+    }
+  }
+
   unsigned long now = millis();
   unsigned long interval = TelemetryLogic::getStreamIntervalMs(deviceState.viewersActive);
 

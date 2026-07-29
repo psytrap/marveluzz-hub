@@ -599,15 +599,47 @@ async function loadDeviceDirectory() {
   container.innerHTML = `<div class="glass empty-state"><p style="color:var(--text-secondary);">Loading registered devices...</p></div>`;
 
   try {
-    const res = await fetch("/api/devices");
-    const list = await res.json();
+    let list = [];
+    if (supabaseClient) {
+      const { data: devRows } = await supabaseClient
+        .from("devices")
+        .select("id, title, status, last_seen, registered_at");
+
+      const { data: uiRows } = await supabaseClient
+        .from("ui_definitions")
+        .select("device_id, layout_def");
+
+      const uiMap = new Map((uiRows || []).map(u => [u.device_id, u.layout_def]));
+
+      if (devRows && devRows.length > 0) {
+        list = devRows.map(d => {
+          const uiDef = uiMap.get(d.id);
+          const displayTitle = (uiDef && uiDef.title) ? uiDef.title : d.title;
+          return {
+            deviceId: d.id,
+            title: displayTitle,
+            state: d.status,
+            lastSeen: d.last_seen,
+            registeredAt: d.registered_at
+          };
+        });
+      }
+    }
+
+    if (!list || list.length === 0) {
+      const res = await fetch("/api/devices");
+      list = await res.json();
+    }
 
     container.innerHTML = "";
 
     if (!list || list.length === 0) {
       container.innerHTML = `
         <div class="glass empty-state">
-          <h3 style="margin-bottom:10px;">No registered devices found</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:15px;">
+            <h3 style="margin:0;">No registered devices found</h3>
+            <button class="btn-action" style="font-size:12px; padding:6px 14px; cursor:pointer;" onclick="loadDeviceDirectory()">🔄 Refresh Directory</button>
+          </div>
           <p style="color:var(--text-secondary); font-size:14px;">Connect an IoT node simulator or device to register it in the index.</p>
         </div>
       `;
@@ -616,6 +648,17 @@ async function loadDeviceDirectory() {
 
     const dirContainer = document.createElement("div");
     dirContainer.className = "directory-container";
+    dirContainer.style.width = "100%";
+
+    const dirHeader = document.createElement("div");
+    dirHeader.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; width:100%;";
+    dirHeader.innerHTML = `
+      <div style="font-size:14px; font-weight:600; color:var(--text-secondary);">Registered Devices (${list.length})</div>
+      <button class="btn-action" style="font-size:12px; padding:6px 14px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" onclick="loadDeviceDirectory()">
+        <span>🔄</span> Refresh Directory
+      </button>
+    `;
+    dirContainer.appendChild(dirHeader);
 
     list.forEach(dev => {
       const row = document.createElement("div");
@@ -644,7 +687,12 @@ async function loadDeviceDirectory() {
 
     container.appendChild(dirContainer);
   } catch (e) {
-    container.innerHTML = `<div class="glass empty-state"><p style="color:var(--danger-color);">Error loading directory list.</p></div>`;
+    container.innerHTML = `
+      <div class="glass empty-state">
+        <p style="color:var(--danger-color); margin-bottom:10px;">Error loading directory list.</p>
+        <button class="btn-action" style="font-size:12px; padding:6px 14px; cursor:pointer;" onclick="loadDeviceDirectory()">🔄 Retry</button>
+      </div>
+    `;
   }
 }
 

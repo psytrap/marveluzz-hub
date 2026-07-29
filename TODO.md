@@ -17,3 +17,11 @@
 ## 🧪 Verification & Quality Assurance
 - [ ] **Race Conditions & Concurrency Analysis**: Perform formal race condition analysis on concurrent lease takeover (`acquire_control_lease`), simultaneous telemetry ingestion (`ingest_telemetry`), and out-of-order command processing across multi-tab web sessions and edge replicas.
 - [ ] **End-to-End Test Suite**: Add tests covering 7-state badge transitions, lease acquisition, storage wipe, and telemetry ingest under mock DB and Supabase production backends.
+
+## 🔒 Security & Access Control
+- [ ] **Undefined Device Onboarding & Registration Security ("Add Device")**:
+  - Define formal security model for adding new IoT devices. Currently, raw `device_id` and `device_key` pairs are pre-seeded or ingested without a standardized user-authorized onboarding flow.
+  - Design & implement secure pairing workflow (e.g. 6-digit PIN / QR code handshake, temporary pair tokens, and mandatory secret key generation).
+  - Enforce permission boundaries so unauthenticated users or unauthorized devices cannot claim unregistered device slots or spoof telemetry ingest RPCs.
+- [ ] **Device Secret Key Rotation & Revocation**: Implement secure endpoint (`POST /api/device/rotate_key`) allowing authenticated dashboard owners to rotate or revoke compromise-suspected device secret keys.
+

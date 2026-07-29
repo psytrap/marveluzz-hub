@@ -8,7 +8,7 @@ const HOST = "0.0.0.0";
 const START_TIME = Date.now();
 
 // Version & Contract Compatibility Constants
-const APP_VERSION = "1.0.23";
+const APP_VERSION = "1.0.24";
 const REQUIRED_SCHEMA_VERSION = "20260728000000";
 
 // 4 Standard Supabase Environment Variables
@@ -689,26 +689,42 @@ async function handler(req: Request): Promise<Response> {
       let list: unknown[] = [];
 
       if (supabase) {
-        const { data, error } = await supabase
+        const { data: devicesData, error } = await supabase
           .from("devices")
           .select("id, title, status, last_seen, registered_at");
 
         if (error) throw error;
-        list = (data || []).map(d => ({
-          deviceId: d.id,
-          title: d.title,
-          state: d.status,
-          lastSeen: d.last_seen,
-          registeredAt: d.registered_at
-        }));
+
+        const { data: uiData } = await supabase
+          .from("ui_definitions")
+          .select("device_id, layout_def");
+
+        const uiMap = new Map((uiData || []).map(u => [u.device_id, u.layout_def]));
+
+        list = (devicesData || []).map(d => {
+          const uiDef = uiMap.get(d.id) as { title?: string } | undefined;
+          const displayTitle = (uiDef && uiDef.title) ? uiDef.title : d.title;
+          return {
+            deviceId: d.id,
+            title: displayTitle,
+            state: d.status,
+            lastSeen: d.last_seen,
+            registeredAt: d.registered_at
+          };
+        });
       } else if (mockDb) {
-        list = Array.from(mockDb.devices.values()).map(d => ({
-          deviceId: d.id,
-          title: d.title,
-          state: d.status,
-          lastSeen: d.last_seen,
-          registeredAt: d.registered_at
-        }));
+        list = Array.from(mockDb.devices.values()).map(d => {
+          const uiDef = mockDb.uiDefinitions.get(d.id);
+          const layoutDef = uiDef?.layout_def as { title?: string } | undefined;
+          const displayTitle = (layoutDef && layoutDef.title) ? layoutDef.title : d.title;
+          return {
+            deviceId: d.id,
+            title: displayTitle,
+            state: d.status,
+            lastSeen: d.last_seen,
+            registeredAt: d.registered_at
+          };
+        });
       }
 
       return new Response(JSON.stringify(list), {

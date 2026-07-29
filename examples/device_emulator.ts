@@ -547,7 +547,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       log("Connecting target: " + hubUrl + (isDirect ? " (Direct Supabase Cloud Mode)" : " (Edge Server Mode)"), "System");
 
       const layoutDef = {
-        title: "ESP32 Temperature Node",
+        title: "IoT Device Emulator Node",
         type: "layout",
         layout: [
           { type: "number", properties: { label: "DS18B20 Temperature (°C)", id: "temperature", value: String(tempVal), readonly: "true" } },

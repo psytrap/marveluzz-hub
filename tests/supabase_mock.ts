@@ -53,7 +53,7 @@ export class MockSupabaseEngine {
   private historyIdCounter = 1;
 
   constructor() {
-    this.seedDevice("32323232-3232-4232-8232-28c13340c86c", "secret_passcode_123", "ESP32 Temperature Node");
+    this.seedDevice("32323232-3232-4232-8232-28c13340c86c", "secret_passcode_123", "IoT Device Emulator Node");
   }
 
   public seedDevice(id: string, key: string, title = "Test Node") {

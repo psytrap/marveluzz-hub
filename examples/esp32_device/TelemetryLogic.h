@@ -4,7 +4,7 @@
  * ============================================================================
  * Decoupled C++ business logic class for hardware microcontrollers (ESP32).
  * Formats JSON RPC payloads for layout registration and telemetry ingest,
- * decodes incoming executed command queues, and handles status transitions.
+ * decodes incoming executed command queues & Realtime WebSockets, and handles state.
  * ============================================================================
  */
 
@@ -16,6 +16,7 @@
 
 struct DeviceState {
   bool connected = false;
+  bool wsConnected = false;
   bool layoutSent = false;
   bool relayState = false;
   bool viewersActive = true;
@@ -75,40 +76,84 @@ public:
     return viewersActive ? 5000 : 30000;
   }
 
+  // Builds Phoenix WebSocket Join frame payload for Supabase Realtime channel subscription
+  static String buildWsJoinPayload(const String& deviceId) {
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
+    StaticJsonDocument<256> doc;
+#endif
+
+    doc["topic"] = "realtime:public:device_commands:device_id=eq." + deviceId;
+    doc["event"] = "phx_join";
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    doc["payload"].to<JsonObject>();
+#else
+    doc.createNestedObject("payload");
+#endif
+    doc["ref"] = "1";
+
+    String output;
+    serializeJson(doc, output);
+    return output;
+  }
+
   // Generates JSON Layout Definition document to register widgets with Marveluzz Hub
   static String buildLayoutJson(const String& deviceId, const String& deviceKey) {
-    StaticJsonDocument<512> doc;
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
+    StaticJsonDocument<768> doc;
+#endif
+
     doc["p_device_id"] = deviceId.c_str();
     doc["p_device_key"] = deviceKey.c_str();
 
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonObject layoutDef = doc["p_layout_def"].to<JsonObject>();
+#else
     JsonObject layoutDef = doc.createNestedObject("p_layout_def");
-    layoutDef["title"] = "ESP32 Field Temperature Node";
+#endif
+
+    layoutDef["title"] = "ESP32 Field Node";
     layoutDef["type"] = "layout";
 
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonArray layout = layoutDef["layout"].to<JsonArray>();
+#else
     JsonArray layout = layoutDef.createNestedArray("layout");
+#endif
     
-    // Temperature widget (read-only)
-    JsonObject item1 = layout.createNestedObject();
-    item1["type"] = "number";
-    JsonObject prop1 = item1.createNestedObject("properties");
-    prop1["label"] = "Field Sensor Temperature (°C)";
-    prop1["id"] = "temperature";
-    prop1["readonly"] = "true";
+    // 1. Status Indicator
+    JsonObject item1 = layout.add<JsonObject>();
+    item1["type"] = "indicator";
+    JsonObject prop1 = item1["properties"].to<JsonObject>();
+    prop1["label"] = "Node Status";
+    prop1["id"] = "status_text";
+    prop1["value"] = "Online";
 
-    // Water Pump Relay Switch
-    JsonObject item2 = layout.createNestedObject();
-    item2["type"] = "button";
-    JsonObject prop2 = item2.createNestedObject("properties");
-    prop2["label"] = "Water Pump Relay";
-    prop2["id"] = "pump_relay";
+    // 2. Temperature Readout
+    JsonObject item2 = layout.add<JsonObject>();
+    item2["type"] = "number";
+    JsonObject prop2 = item2["properties"].to<JsonObject>();
+    prop2["label"] = "Field Sensor Temperature (°C)";
+    prop2["id"] = "temperature";
+    prop2["readonly"] = "true";
 
-    // Uptime text display
-    JsonObject item3 = layout.createNestedObject();
-    item3["type"] = "text";
-    JsonObject prop3 = item3.createNestedObject("properties");
-    prop3["label"] = "Device Uptime";
-    prop3["id"] = "uptime";
-    prop3["readonly"] = "true";
+    // 3. Water Pump Relay Switch Button
+    JsonObject item3 = layout.add<JsonObject>();
+    item3["type"] = "button";
+    JsonObject prop3 = item3["properties"].to<JsonObject>();
+    prop3["label"] = "Water Pump Relay";
+    prop3["id"] = "pump_relay";
+
+    // 4. Device Uptime Text
+    JsonObject item4 = layout.add<JsonObject>();
+    item4["type"] = "text";
+    JsonObject prop4 = item4["properties"].to<JsonObject>();
+    prop4["label"] = "Device Uptime";
+    prop4["id"] = "uptime";
+    prop4["readonly"] = "true";
 
     String output;
     serializeJson(doc, output);
@@ -119,11 +164,21 @@ public:
   static String buildTelemetryJson(const String& deviceId, const String& deviceKey, 
                                   float temp, bool relayState, unsigned long uptimeSec, 
                                   bool viewersActive, bool hasFault) {
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
     StaticJsonDocument<512> doc;
+#endif
+
     doc["p_device_id"] = deviceId.c_str();
     doc["p_device_key"] = deviceKey.c_str();
 
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonObject telemetry = doc["p_telemetry_data"].to<JsonObject>();
+#else
     JsonObject telemetry = doc.createNestedObject("p_telemetry_data");
+#endif
+
     telemetry["temperature"] = round(temp * 10.0) / 10.0;
     telemetry["pump_relay"] = relayState;
     telemetry["uptime"] = formatUptime(uptimeSec);
@@ -141,13 +196,35 @@ public:
     return output;
   }
 
-  // Parses executed command responses returned by Marveluzz Hub
+  // Parses executed command responses returned by Marveluzz Hub or Realtime WebSocket frame
   static void parseIngestResponse(const String& jsonResponse, DeviceState& state, 
                                   void (*onRelayCommand)(bool newState)) {
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
     DynamicJsonDocument doc(1024);
+#endif
+
     DeserializationError error = deserializeJson(doc, jsonResponse);
     if (error) return;
 
+    // Handle WebSocket postgres_changes event payload
+    if (doc["event"] == "postgres_changes") {
+      JsonObject payloadRecord = doc["payload"]["data"]["record"];
+      if (!payloadRecord.isNull()) {
+        const char* target = payloadRecord["target"];
+        if (target != nullptr && String(target) == "pump_relay") {
+          bool val = payloadRecord["value"] | !state.relayState;
+          state.relayState = val;
+          if (onRelayCommand != nullptr) {
+            onRelayCommand(state.relayState);
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle standard HTTP POST RPC array payload
     if (doc.is<JsonArray>()) {
       JsonArray commands = doc.as<JsonArray>();
       for (JsonObject cmd : commands) {
