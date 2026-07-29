@@ -166,6 +166,47 @@ Deno.test("Authentication Suite: Local Session Lifecycle & Mock Login (MOCK_AUTH
       assertEquals(telemetryJson.viewers_active, true);
     });
 
+    await t.step("Scenario: Web UI panel (view-only) opens -> 5s Fast Mode -> Web UI panel closes -> 30s Power-Save Mode", async () => {
+      const deviceId = "32323232-3232-4232-8232-28c13340c86c";
+      const deviceKey = "secret_passcode_123";
+
+      // 1. View-only panel opens: dispatches viewers_active = true
+      const openRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "viewers_active", action: "set_value", value: true })
+      });
+      assertEquals(openRes.status, 200);
+      await openRes.body?.cancel();
+
+      // 2. Ingest while open returns viewers_active = true (5s Fast Mode)
+      const telemFast = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, deviceKey, data: { temperature: 23.1 } })
+      });
+      const jsonFast = await telemFast.json();
+      assertEquals(jsonFast.viewers_active, true);
+
+      // 3. View-only panel closes: dispatches viewers_active = false
+      const closeRes = await fetch(`${baseUrl}/api/device/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cookie": `marveluzz_session=${activeSessionId}` },
+        body: JSON.stringify({ deviceId, target: "viewers_active", action: "set_value", value: false })
+      });
+      assertEquals(closeRes.status, 200);
+      await closeRes.body?.cancel();
+
+      // 4. Subsequent ingest returns viewers_active = false (30s Power-Save Mode)
+      const telemSlow = await fetch(`${baseUrl}/api/device/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, deviceKey, data: { temperature: 23.2 } })
+      });
+      const jsonSlow = await telemSlow.json();
+      assertEquals(jsonSlow.viewers_active, false);
+    });
+
     await t.step("Scenario: Web UI panel with Control acquired is closed -> dispatches release_control_lease AND viewers_active=false -> subsequent telemetry returns viewers_active=false", async () => {
       const deviceId = "32323232-3232-4232-8232-28c13340c86c";
       const deviceKey = "secret_passcode_123";

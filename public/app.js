@@ -234,9 +234,16 @@ function setupRealtimeSubscriptions() {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
         if (isDirectoryPage && typeof loadDeviceDirectory === "function") {
-          const old = payload.old || {};
           const next = payload.new || {};
-          if (old.display_name !== next.display_name || old.status !== next.status) {
+          const devId = next.id;
+          const currentName = next.display_name || next.title;
+          const currentStatus = next.status;
+          const prev = window.directoryDeviceStateCache ? window.directoryDeviceStateCache.get(devId) : null;
+
+          if (!prev || prev.name !== currentName || prev.status !== currentStatus) {
+            if (window.directoryDeviceStateCache) {
+              window.directoryDeviceStateCache.set(devId, { name: currentName, status: currentStatus });
+            }
             loadDeviceDirectory();
           }
           return;

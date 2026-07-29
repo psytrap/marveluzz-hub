@@ -1,4 +1,4 @@
-// Marveluzz Hub - Device Directory Frontend Module (devices.js)
+window.directoryDeviceStateCache = window.directoryDeviceStateCache || new Map();
 
 async function loadDeviceDirectory() {
   const container = document.getElementById("layout-root");
@@ -16,7 +16,9 @@ async function loadDeviceDirectory() {
 
   if (!container) return;
 
-  container.innerHTML = `<div class="glass empty-state"><p style="color:var(--text-secondary);">Loading registered devices...</p></div>`;
+  if (!container.children.length) {
+    container.innerHTML = `<div class="glass empty-state"><p style="color:var(--text-secondary);">Loading registered devices...</p></div>`;
+  }
 
   try {
     let list = [];
@@ -35,6 +37,7 @@ async function loadDeviceDirectory() {
         list = devRows.map(d => {
           const uiDef = uiMap.get(d.id);
           const displayTitle = (uiDef && uiDef.title) ? uiDef.title : d.title;
+          window.directoryDeviceStateCache.set(d.id, { name: displayTitle, status: d.status });
           return {
             deviceId: d.id,
             title: displayTitle,
@@ -49,6 +52,9 @@ async function loadDeviceDirectory() {
     if (!list || list.length === 0) {
       const res = await fetch("/api/devices");
       list = await res.json();
+      (list || []).forEach(item => {
+        window.directoryDeviceStateCache.set(item.deviceId, { name: item.title, status: item.state });
+      });
     }
 
     container.innerHTML = "";
