@@ -185,6 +185,50 @@ Deno.test("Staging Suite: Endpoint Verification & Integration", async (t) => {
 
     const stats = await res.json();
     assertEquals(stats.deviceId, TEST_DEVICE_ID);
+    assert(stats.layout_definition !== undefined);
+  });
+
+  await t.step("Verifies stored layout and telemetry restoration while device is disconnected/detached", async () => {
+    const layoutDef = {
+      title: "Disconnected ESP32 Node",
+      type: "layout",
+      layout: [{ type: "number", properties: { label: "Offline Temp", id: "temp", value: "19.5" } }]
+    };
+
+    // 1. Register layout schema for test device
+    const regRes = await fetch(`${STAGING_URL}/api/device/ui_definition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: TEST_DEVICE_ID,
+        deviceKey: TEST_DEVICE_KEY,
+        layoutDef
+      })
+    });
+    assertEquals(regRes.status, 200);
+    const regJson = await regRes.json();
+    assertEquals(regJson.success, true);
+
+    // 2. Query Supabase Cloud DB directly via PostgREST to verify DB layout retention for offline device
+    const configRes = await fetch(`${STAGING_URL}/api/config`);
+    const config = await configRes.json();
+    const spUrl = config.supabaseUrl;
+    const spKey = config.supabaseAnonKey;
+
+    const dbRes = await fetch(`${spUrl}/rest/v1/ui_definitions?device_id=eq.${TEST_DEVICE_ID}&select=device_id,layout_def`, {
+      headers: {
+        "apikey": spKey,
+        "Authorization": `Bearer ${spKey}`,
+        "Accept": "application/json"
+      }
+    });
+    if (!dbRes.ok) {
+      console.log("PostgREST Error Response:", await dbRes.text());
+    }
+    assertEquals(dbRes.status, 200);
+    const dbData = await dbRes.json();
+    assert(Array.isArray(dbData) && dbData.length > 0);
+    assertEquals(dbData[0].layout_def.title, "Disconnected ESP32 Node");
   });
 });
 
