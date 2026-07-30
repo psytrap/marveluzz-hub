@@ -104,9 +104,14 @@ marveluzz-hub/
 | Environment Variable | Description | Scope / Usage |
 | :--- | :--- | :--- |
 | `SUPABASE_URL` | Base API gateway URL (`https://<project-id>.supabase.co`) | Shared (Edge Server & Browser) |
-| `SUPABASE_ANON_KEY` | Public anonymous API key (enforces Row Level Security) | Public (Client Browser / Realtime) |
+| `SUPABASE_PUBLIC_KEY` / `SUPABASE_ANON_KEY` | Public publishable API key (enforces Row Level Security) | Public (Client Browser / Realtime) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Admin secret API key (bypasses RLS for ingest RPCs) | Server-Only (Deno Edge Functions) |
 | `SUPABASE_JWT_SECRET` | Secret key for verifying & decoding User JWT auth tokens | Server-Only (Offline Token Verification) |
+
+> [!NOTE]
+> **💡 Supabase Key Naming: `SUPABASE_ANON_KEY` vs `SUPABASE_PUBLIC_KEY` (Publishable Key)**
+> - **Legacy vs Modern Terminology**: In early Supabase releases, the public browser key was named `SUPABASE_ANON_KEY` (anonymous role key). In modern Supabase Cloud & V2 APIs, it is referred to as the **Publishable / Public Key** (`SUPABASE_PUBLIC_KEY` / `sb_pub_...`).
+> - **Future-Proof Standard**: Marveluzz Hub supports both `SUPABASE_PUBLIC_KEY` and `SUPABASE_ANON_KEY` interchangeably (`SUPABASE_PUBLIC_KEY` taking precedence). Using `SUPABASE_PUBLIC_KEY` is recommended for future-proof V2/V3 Supabase deployments.
 
 ### GitHub OAuth & User Access Control
 

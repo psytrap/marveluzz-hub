@@ -3,13 +3,14 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { MockSupabaseEngine } from "../tests/supabase_mock.ts";
 
-export const APP_VERSION = "1.0.53";
+export const APP_VERSION = "1.0.54";
 export const REQUIRED_SCHEMA_VERSION = "20260728000000";
 export const START_TIME = Date.now();
 
-// 4 Standard Supabase Environment Variables
+// 4 Standard Supabase Environment Variables (Supports both SUPABASE_PUBLIC_KEY and SUPABASE_ANON_KEY)
 export const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-export const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+export const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLIC_KEY");
+export const SUPABASE_ANON_KEY = SUPABASE_PUBLIC_KEY || Deno.env.get("SUPABASE_ANON_KEY");
 export const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 export const SUPABASE_JWT_SECRET = Deno.env.get("SUPABASE_JWT_SECRET");
 

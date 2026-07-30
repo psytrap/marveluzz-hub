@@ -15,3 +15,5 @@ Thumbs.db
 # Deno & Node Temp Artifacts
 .deno/
 node_modules/
+cookie.txt
+*.log

@@ -643,3 +643,4 @@ All active roadmap tasks and future enhancements are maintained in the single pr
 > **Developer Directives for AI Assistants & Automated Tools:**
 > 1. **No Automated Git Actions**: Never execute `git` commands (`git add`, `git commit`, `git push`, etc.). All version control operations must be performed manually by the developer.
 > 2. **Explicit Test Justification**: Always explain the exact rationale and discuss proposed changes with the developer BEFORE modifying any test files (`tests/*.ts`).
+> 3. **File & Test Line Threshold Limits**: Avoid creating or maintaining application code files with more than 600 lines or test code files with more than 1000 lines. When a file exceeds these thresholds, proactively suggest modular refactoring strategies.
