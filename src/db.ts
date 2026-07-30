@@ -3,7 +3,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { MockSupabaseEngine } from "../tests/supabase_mock.ts";
 
-export const APP_VERSION = "1.0.54";
+export const APP_VERSION = "1.0.55";
 export const REQUIRED_SCHEMA_VERSION = "20260728000000";
 export const START_TIME = Date.now();
 
