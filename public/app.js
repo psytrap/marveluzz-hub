@@ -22,6 +22,7 @@ window.supabaseClient = supabaseClient;
 // -------------------------------------------------------------
 // 1. App Initialization & Page Routing
 // -------------------------------------------------------------
+/** Initializes web dashboard application, fetches runtime config, and routes page views. */
 async function initApp() {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDeviceIdParam = urlParams.has("device_id");
@@ -93,6 +94,7 @@ async function initApp() {
   }
 }
 
+/** Fetches backend contract self-test status and updates version badges in footer. */
 async function loadVersionAndSelfTest() {
   try {
     const res = await fetch("/api/health/self-test", { cache: "no-store" });
@@ -137,6 +139,7 @@ async function loadVersionAndSelfTest() {
 // -------------------------------------------------------------
 // 2. 7-State Diagnostic Status Badge Machine
 // -------------------------------------------------------------
+/** Updates UI status badge color, text label, and control button state. */
 function updateStatusBadge(status, customLabel = null) {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   const controlBtn = document.getElementById("btn-control");
@@ -201,6 +204,7 @@ function updateStatusBadge(status, customLabel = null) {
   toggleInputLockOverlay(status === "control" && isControlAcquired);
 }
 
+/** Periodically checks elapsed time since last telemetry update and flags stale status. */
 function startKeepaliveStaleDetector() {
   if (lastSeenTimer) clearInterval(lastSeenTimer);
 
@@ -213,6 +217,7 @@ function startKeepaliveStaleDetector() {
   }, 2000);
 }
 
+/** Toggles read-only input lock overlays across widget cards when control lease is owned elsewhere. */
 function toggleInputLockOverlay(isOwner) {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   if (isDirectoryPage) return;
@@ -306,6 +311,7 @@ function setupRealtimeSubscriptions() {
 // -------------------------------------------------------------
 // 4. Command Dispatch Utility
 // -------------------------------------------------------------
+/** Dispatches HTTP POST control command to target device. */
 async function sendControlCommand(target, action, value) {
   try {
     const res = await fetch("/api/device/command", {

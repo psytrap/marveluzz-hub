@@ -16,6 +16,7 @@ export const activeSessions = new Map<string, { username: string; expires: numbe
 export const revokedSessions = new Set<string>();
 
 let cryptoKeyPromise: Promise<CryptoKey> | null = null;
+/** Lazy-loads and returns cached HMAC CryptoKey for session token signing. */
 function getCryptoKey(): Promise<CryptoKey> {
   if (!cryptoKeyPromise) {
     const encoder = new TextEncoder();
@@ -30,6 +31,7 @@ function getCryptoKey(): Promise<CryptoKey> {
   return cryptoKeyPromise;
 }
 
+/** Generates signed HMAC session token and records session expiration. */
 export async function createSignedSessionToken(username: string): Promise<{ token: string; expires: number }> {
   const expires = Date.now() + SESSION_EXPIRY_MS;
   const payload = `${username}:${expires}`;
@@ -42,12 +44,14 @@ export async function createSignedSessionToken(username: string): Promise<{ toke
   return { token, expires };
 }
 
+/** Registers new active user session ID with expiration timestamp. */
 export function createSession(sessionId: string, username: string): number {
   const expires = Date.now() + SESSION_EXPIRY_MS;
   activeSessions.set(sessionId, { username, expires });
   return expires;
 }
 
+/** Asynchronously verifies signed HMAC session token or active session ID. */
 export async function checkSessionAsync(token: string): Promise<string | null> {
   if (!token) return null;
   if (revokedSessions.has(token)) return null;
@@ -89,6 +93,7 @@ export async function checkSessionAsync(token: string): Promise<string | null> {
   return null;
 }
 
+/** Synchronously validates active session ID in memory map. */
 export function checkSession(sessionId: string): string | null {
   if (!sessionId || revokedSessions.has(sessionId)) return null;
   const sess = activeSessions.get(sessionId);
@@ -100,6 +105,7 @@ export function checkSession(sessionId: string): string | null {
   return sess.username;
 }
 
+/** Revokes active user session ID and adds token to revocation list. */
 export function deleteSession(sessionId: string) {
   activeSessions.delete(sessionId);
   if (sessionId) {
@@ -107,6 +113,7 @@ export function deleteSession(sessionId: string) {
   }
 }
 
+/** Renders HTML markup for Developer Mock Login and GitHub OAuth sign-in page. */
 export function getLoginHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">

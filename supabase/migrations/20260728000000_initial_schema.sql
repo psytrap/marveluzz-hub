@@ -263,6 +263,7 @@ $$;
 
 -- ==========================================================
 -- Row Level Security (RLS) Policies
+-- SECURITY (DSN-6 / SEC-1): Enable RLS & SELECT-only policies for public/anon roles
 -- ==========================================================
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ui_definitions ENABLE ROW LEVEL SECURITY;

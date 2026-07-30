@@ -1,5 +1,6 @@
 // Marveluzz Hub - Device Management Frontend Module (manage.js)
 
+/** Fetches storage stats and renders the single-column Device Management page. */
 async function loadDeviceManagementPage() {
   const container = document.getElementById("layout-root");
   const titleEl = document.getElementById("dashboard-title");
@@ -54,6 +55,7 @@ async function loadDeviceManagementPage() {
 
     const lastSeenStr = stats.lastSeen ? new Date(stats.lastSeen).toLocaleString() : "Never";
 
+    // DSN-4: Single column stacked container (max-width: 800px) used to optimize touch targets on mobile viewports.
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; gap:20px; width:100%; max-width:800px; margin:0 auto;">
         

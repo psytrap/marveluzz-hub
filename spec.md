@@ -644,3 +644,38 @@ All active roadmap tasks and future enhancements are maintained in the single pr
 > 1. **No Automated Git Actions**: Never execute `git` commands (`git add`, `git commit`, `git push`, etc.). All version control operations must be performed manually by the developer.
 > 2. **Explicit Test Justification**: Always explain the exact rationale and discuss proposed changes with the developer BEFORE modifying any test files (`tests/*.ts`).
 > 3. **File & Test Line Threshold Limits**: Avoid creating or maintaining application code files with more than 600 lines or test code files with more than 1000 lines. When a file exceeds these thresholds, proactively suggest modular refactoring strategies.
+> 4. **Concise Comments & Mandatory Edge-Case Tests**: Keep code comments short and concise by default. Elaborate only when documenting non-obvious design rationale or edge-case fixes; in every such case, a corresponding automated unit/integration test MUST be added to protect that behavior against regression.
+> 5. **Short Function Descriptions**: Every function (exported module or internal helper) must include a short, single-line description docstring or comment above its declaration summarizing its primary purpose.
+> 6. **Design Decision Tracing & ID Immutability (DSN-X)**: Code comments referencing non-obvious architecture or design rationale must use unique Design IDs (`// DSN-X: ...`). Design IDs are **strictly immutable and permanent**: once assigned, a `DSN-X` ID MUST NEVER be redefined, re-assigned, or reused for a different feature or design scope in the future. A canonical 1:1 Design Decision Translation Table must be maintained in Section 9 of `spec.md` mapping each `DSN-X` ID to its specification section and code location (with inline rationale maintained directly in source code and test mapping in `tests/README.md`).
+> 7. **Mandatory Security Audit Tags (`// SECURITY: ...`)**: Critical authentication endpoints, SQL RPC handlers, and RLS definitions must include security audit tags (`// SECURITY: Verify SEC-1, SEC-2, SEC-3 rules after modifying this handler`). AI agents MUST re-verify security compliance against Section 10 after editing any code marked with a `// SECURITY:` tag.
+
+---
+
+## 9. Design Decision Translation Table (DSN-X)
+
+> Inline descriptions and design rationales are maintained directly in source code via `// DSN-X:` comments.
+> For automated test step verification mapping, see 👉 **[tests/README.md](tests/README.md)**.
+
+| Design ID | High-Level Spec Section | Primary Code Anchor | Design Scope |
+| :--- | :--- | :--- | :--- |
+| **DSN-1** | §2.3 | `src/routes.ts` | Component Specifications & Exclusive WebSocket Push |
+| **DSN-2** | §2.4 | `src/routes.ts` | Device Management Lifecycle & Danger Zone Operations |
+| **DSN-3** | §2.5 | `src/db.ts` | Supabase Credentials & HMAC Session Security |
+| **DSN-4** | §2.6 | `public/panel.js` | Web UI Feature Architecture, Control Lease & Layouts |
+| **DSN-5** | §3.2 | `tests/staging_test.ts` | Remote Realtime Gateway & Phoenix Channel Handshake |
+| **DSN-6** | §10 | `supabase/schema.sql` | Direct-to-Cloud Ingestion Security Rules (SEC-1, SEC-2, SEC-3) |
+
+---
+
+## 10. Security Architecture & Direct-to-Cloud Ingestion Rules
+
+> [!CAUTION]
+> **Mandatory Security Directives for IoT Cloud Ingestion:**
+> AI agents and developers MUST enforce the following 3 security rules whenever modifying Supabase schemas, SQL RPCs, Edge endpoints, or firmware ingest logic:
+
+1. **SEC-1 (Zero Direct Table Write Grants for Public Roles)**:
+   - Never grant direct `INSERT`, `UPDATE`, or `DELETE` permissions to `anon` or public roles in Supabase Row Level Security (RLS) policies. All tables MUST restrict public access to `SELECT` only. Direct HTTP table mutations MUST return `403 Forbidden`.
+2. **SEC-2 (Atomic `SECURITY DEFINER` RPC Ingest)**:
+   - All telemetry and UI layout uploads MUST be routed exclusively through atomic SQL RPC functions (`ingest_telemetry()`, `register_ui_definition()`) declared with `SECURITY DEFINER`. This ensures elevated write privileges operate strictly inside validated function boundaries.
+3. **SEC-3 (Per-Device Secret Key Validation inside Database Engine)**:
+   - Before executing table writes, the SQL RPC MUST validate the provided `p_device_id` and `p_device_key` against `public.devices`. If the key is invalid, missing, or rotated, the RPC MUST abort with an `Unauthorized` exception without committing any rows.

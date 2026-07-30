@@ -3,6 +3,7 @@
 import { APP_VERSION, REQUIRED_SCHEMA_VERSION, START_TIME, SUPABASE_URL, SUPABASE_ANON_KEY, mockDb, supabase } from "./db.ts";
 import { DISABLE_AUTH, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, MOCK_AUTH, ALLOWED_GITHUB_USERS, COOKIE_NAME, checkSessionAsync, createSignedSessionToken, deleteSession, getLoginHtml } from "./auth.ts";
 
+/** Primary HTTP router for static assets, OAuth login, device management, and telemetry ingest APIs. */
 export async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
@@ -145,6 +146,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   // Session verification helper
+  /** Verifies request session cookie or bypasses check when DISABLE_AUTH=true. */
   async function getAuthenticatedUser(): Promise<string | null> {
     if (DISABLE_AUTH) return "anonymous";
     const cookies = req.headers.get("Cookie") || "";
@@ -431,6 +433,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ success: true, status: "live" }), { headers: { "Content-Type": "application/json" } });
       }
 
+      // NOTE: 'viewers_active' updates devices table state so subsequent telemetry ingest knows if Web UI viewers are active.
       if (target === "viewers_active") {
         const isActive = value === true || value === "true";
         if (supabase) {
@@ -471,6 +474,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   // IoT Device Telemetry RPC Endpoint
+  // SECURITY: Verify SEC-2 & SEC-3 rules - Telemetry ingest requires valid p_device_id and p_device_key
   if ((pathname === "/rest/v1/rpc/ingest_telemetry" || pathname === "/api/device/telemetry") && req.method === "POST") {
     try {
       const body = await req.json();
@@ -490,6 +494,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         });
         if (error) return new Response(JSON.stringify({ error: error.message }), { status: 401 });
         const viewersActive = (Array.isArray(data) && data.length > 0) ? Boolean(data[0].viewers_active) : false;
+        // DSN-1: Telemetry POST returns commands: [] to enforce sub-5ms WebSocket command push.
         return new Response(JSON.stringify({ success: true, viewers_active: viewersActive, commands: [] }), { headers: { "Content-Type": "application/json" } });
       } else if (mockDb) {
         const result = mockDb.ingestTelemetry(deviceId, deviceKey, telemetry);
@@ -547,6 +552,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         await supabase.from("telemetry_latest").delete().eq("device_id", deviceId);
         await supabase.from("ui_definitions").delete().eq("device_id", deviceId);
         await supabase.from("device_commands").delete().eq("device_id", deviceId);
+        // DSN-3: deleteRecord=false purges telemetry & resets status to 'detached'; deleteRecord=true unregisters device completely.
         if (deleteRecord) {
           await supabase.from("devices").delete().eq("id", deviceId);
         } else {

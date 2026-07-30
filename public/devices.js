@@ -1,5 +1,6 @@
 window.directoryDeviceStateCache = window.directoryDeviceStateCache || new Map();
 
+/** Fetches registered device list and renders directory grid page. */
 async function loadDeviceDirectory() {
   const container = document.getElementById("layout-root");
   const titleEl = document.getElementById("dashboard-title");

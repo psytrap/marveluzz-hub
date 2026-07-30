@@ -7,6 +7,7 @@ const INDEX_HTML_PATH = "./public/index.html";
 const EMULATOR_PATH = "./examples/emulator/device_emulator.ts";
 const MIGRATIONS_DIR = "./supabase/migrations";
 
+/** Bumps semantic app version in src/db.ts and synchronizes required DB migration timestamp. */
 async function uprevVersion() {
   const bumpType = Deno.args[0] || "patch";
   

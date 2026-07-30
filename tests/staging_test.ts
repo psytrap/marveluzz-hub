@@ -318,6 +318,7 @@ Deno.test({
           try {
             const parsed = JSON.parse(ev.data);
             receivedEvents.push(parsed);
+            // DSN-6: Awaits Phoenix 'phx_reply' channel handshake before HTTP POST to avoid WebSocket frame drops on high latency connections.
             if (parsed.event === "phx_reply" || parsed.ref === "1") {
               clearTimeout(timeout);
               setTimeout(resolve, 200);

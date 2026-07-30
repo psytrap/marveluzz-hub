@@ -2,6 +2,7 @@
 
 let isLeaseReleased = false;
 
+/** Loads layout schema definition and initial telemetry state for single-device panel. */
 async function loadInitialData() {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   if (isDirectoryPage) return;
@@ -84,6 +85,7 @@ async function loadInitialData() {
   }
 }
 
+/** Dynamically renders 8 widget types from IoT node layout schema JSON. */
 function renderUIDefinition(schema) {
   if (!schema) return;
 
@@ -256,9 +258,11 @@ async function updateViewerPresence(active) {
     console.warn("Direct Supabase viewer presence update fallback to API:", e);
   }
 
+  // DSN-4: Setting viewers_active=true signals ESP32 firmware to switch from 30s power-save to 5s fast mode.
   sendControlCommand("viewers_active", "set_value", true);
 }
 
+/** Requests exclusive control lease lock or releases ownership. */
 async function toggleControlLease() {
   try {
     if (!isControlAcquired) {
@@ -299,6 +303,7 @@ async function toggleControlLease() {
   }
 }
 
+/** Dispatches beacon command on page unload to release control lease and clear active viewer state. */
 function releaseControlLeaseOnLeave() {
   const isDirectoryPage = !(new URLSearchParams(window.location.search)).has("device_id");
   if (isDirectoryPage || !currentDeviceId || isLeaseReleased) return;
@@ -328,6 +333,7 @@ function releaseControlLeaseOnLeave() {
   }
 }
 
+// DSN-4: Dispatches 'release_control_lease' on page unload to prevent orphaned lease locks across browser tabs.
 window.addEventListener("beforeunload", releaseControlLeaseOnLeave);
 window.addEventListener("pagehide", releaseControlLeaseOnLeave);
 document.addEventListener("click", (e) => {
