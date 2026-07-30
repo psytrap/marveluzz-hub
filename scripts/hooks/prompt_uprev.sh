@@ -33,13 +33,13 @@ case "$RESPONSE" in
   [mM][iI][nN][oO][rR]|m)
     echo "🚀 Running minor uprev..."
     deno task uprev minor
-    git add src/main.ts public/index.html
+    git add src/db.ts examples/emulator/device_emulator.ts
     echo "✅ Staged minor version uprev."
     ;;
   [mM][aA][jJ][oO][rR]|M)
     echo "🚀 Running major uprev..."
     deno task uprev major
-    git add src/main.ts public/index.html
+    git add src/db.ts examples/emulator/device_emulator.ts
     echo "✅ Staged major version uprev."
     ;;
   [sS][kK][iI][pP]|s|n|N)
@@ -48,7 +48,7 @@ case "$RESPONSE" in
   ""|[pP]|[pP][aA][tT][cC][hH]|*)
     echo "🚀 Running patch uprev [default: p]..."
     deno task uprev patch
-    git add src/main.ts public/index.html
+    git add src/db.ts examples/emulator/device_emulator.ts
     echo "✅ Staged patch version uprev."
     ;;
 esac
