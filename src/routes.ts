@@ -473,6 +473,14 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // SECURITY (DSN-6 / SEC-1): Reject direct PostgREST table write attempts
+  if (pathname.startsWith("/rest/v1/") && !pathname.startsWith("/rest/v1/rpc/") && (req.method === "POST" || req.method === "PATCH" || req.method === "PUT" || req.method === "DELETE")) {
+    return new Response(JSON.stringify({ error: "SEC-1 Violation: Direct table write operations are prohibited. Use SQL RPC endpoints." }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
   // IoT Device Telemetry RPC Endpoint
   // SECURITY: Verify SEC-2 & SEC-3 rules - Telemetry ingest requires valid p_device_id and p_device_key
   if ((pathname === "/rest/v1/rpc/ingest_telemetry" || pathname === "/api/device/telemetry") && req.method === "POST") {

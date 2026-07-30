@@ -206,6 +206,30 @@ Deno.test("Local Engine: Supabase Mock Schema & Ingest RPCs", async (t) => {
     assertEquals(activeRes[0].viewers_active, true);
   });
 
+  await t.step("Enforces SEC-1 (Zero Direct Table Writes) - Rejects direct REST table INSERT/UPDATE attempts with 403", async () => {
+    const { handleRequest } = await import("../src/routes.ts");
+
+    const directInsertReq = new Request("http://localhost:8000/rest/v1/telemetry_history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_id: MOCK_DEVICE_ID, data: { temp: 100 } })
+    });
+    const resInsert = await handleRequest(directInsertReq);
+    assertEquals(resInsert.status, 403);
+    const bodyInsert = await resInsert.json();
+    assertEquals(bodyInsert.error.includes("SEC-1 Violation"), true);
+
+    const directUpdateReq = new Request("http://localhost:8000/rest/v1/devices?id=eq.32323232", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "control" })
+    });
+    const resUpdate = await handleRequest(directUpdateReq);
+    assertEquals(resUpdate.status, 403);
+    const bodyUpdate = await resUpdate.json();
+    assertEquals(bodyUpdate.error.includes("SEC-1 Violation"), true);
+  });
+
   await t.step("Releasing control lease while active updates status to live and clearing viewers_active returns false for telemetry ingest", () => {
     const db = new MockSupabaseEngine();
     const sessionId = "control-session-999";

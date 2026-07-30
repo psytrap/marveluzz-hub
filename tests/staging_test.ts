@@ -264,7 +264,7 @@ Deno.test({
     assertEquals(rootSchema.trim(), migrationSchema.trim());
   });
 
-  await t.step("Direct PostgREST vs Deno Edge RPC contract match", async () => {
+  await t.step("Live Staging SEC-2: Validates atomic SECURITY DEFINER telemetry ingest via PostgREST RPC (/rest/v1/rpc/ingest_telemetry)", async () => {
     const configRes = await fetch(`${STAGING_URL}/api/config`);
     const config = await configRes.json();
 
@@ -287,6 +287,55 @@ Deno.test({
       assertEquals(directRes.status, 200);
       const directData = await directRes.json();
       assert(Array.isArray(directData));
+    }
+  });
+
+  await t.step("Live Staging SEC-1: Rejects direct table INSERT to telemetry_history with 401/403 (Zero Direct Table Writes)", async () => {
+    const configRes = await fetch(`${STAGING_URL}/api/config`);
+    const config = await configRes.json();
+
+    if (config.supabaseUrl && config.supabaseAnonKey) {
+      const tableEndpoint = `${config.supabaseUrl}/rest/v1/telemetry_history`;
+      const tableRes = await fetch(tableEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": config.supabaseAnonKey,
+          "Authorization": `Bearer ${config.supabaseAnonKey}`
+        },
+        body: JSON.stringify({ device_id: TEST_DEVICE_ID, data: { test_sec1: true } })
+      });
+
+      assert(tableRes.status === 401 || tableRes.status === 403 || tableRes.status === 404, `Expected SEC-1 RLS rejection (401/403), got ${tableRes.status}`);
+      await tableRes.body?.cancel();
+    }
+  });
+
+  await t.step("Live Staging SEC-3: Rejects telemetry RPC ingest with invalid secret key with 401 / success:false", async () => {
+    const configRes = await fetch(`${STAGING_URL}/api/config`);
+    const config = await configRes.json();
+
+    if (config.supabaseUrl && config.supabaseAnonKey) {
+      const directEndpoint = `${config.supabaseUrl}/rest/v1/rpc/ingest_telemetry`;
+      const invalidRes = await fetch(directEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": config.supabaseAnonKey,
+          "Authorization": `Bearer ${config.supabaseAnonKey}`
+        },
+        body: JSON.stringify({
+          p_device_id: "11111111-2222-3333-4444-555555555555",
+          p_device_key: "invalid_secret_key_666",
+          p_telemetry_data: { test_sec3: true }
+        })
+      });
+
+      const directData = await invalidRes.json();
+      const isRejected = invalidRes.status === 401 || invalidRes.status === 400 || 
+                         (Array.isArray(directData) && directData.length > 0 && directData[0].success === false) ||
+                         (directData.error !== undefined);
+      assert(isRejected, `Expected SEC-3 invalid key rejection, got status ${invalidRes.status}`);
     }
   });
 

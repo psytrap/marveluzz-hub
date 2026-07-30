@@ -8,21 +8,21 @@ This directory contains the automated integration and contract verification test
 
 | Test File | Suite Description & Focus Area | Steps | Target Backend | Command |
 | :--- | :--- | :---: | :--- | :--- |
-| **`tests/local_test.ts`** | **Local Engine & Unit Verification**: Asserts SSE event protocol, SQL RPC mocks, exclusive control lease locks, storage footprint wiping, key rotation, retention TTL, 7-state machine, multi-device isolation, session security, and 1:1 SQL schema parity. | **26** | Standalone Local Mock Engine (`MockSupabaseEngine`) | `deno task test` |
+| **`tests/local_test.ts`** | **Local Engine & Unit Verification**: Asserts SSE event protocol, SQL RPC mocks, exclusive control lease locks, storage footprint wiping, key rotation, retention TTL, 7-state machine, multi-device isolation, session security, SEC-1 direct table write rejection, and 1:1 SQL schema parity. | **27** | Standalone Local Mock Engine (`MockSupabaseEngine`) | `deno task test` |
 | **`tests/auth_test.ts`** | **Authentication & Session Lifecycle**: Verifies Developer Mock Login (`MOCK_AUTH=true`), session cookie signing/validation, GitHub OAuth gateway (`MOCK_AUTH=false`), UI command dispatch, Fast/Power-Save telemetry transitions, page unload lease auto-release, and Danger Zone storage wipe vs device deletion. | **15** | Local Edge Server & Session Manager | `deno task test` |
-| **`tests/staging_test.ts`** | **Live Staging & Production Contract Parity**: Executes live endpoint verification against Deno Deploy (`https://marveluzz-hub-staging.psytrap.deno.net`), checking version banners, memory diagnostics, RPC execution, directory queries, disconnected layout restoration, and Supabase Realtime WebSocket push-down. | **13** | Live Remote Deno Deploy & Supabase Cloud | `deno task test:staging` |
+| **`tests/staging_test.ts`** | **Live Staging & Production Contract Parity**: Executes live endpoint verification against Deno Deploy (`https://marveluzz-hub-staging.psytrap.deno.net`), checking version banners, memory diagnostics, RPC execution, SEC-1 direct table write rejection, SEC-3 invalid key rejection, directory queries, disconnected layout restoration, and Supabase Realtime WebSocket push-down. | **15** | Live Remote Deno Deploy & Supabase Cloud | `deno task test:staging` |
 
-**Total Automated Coverage**: **54 Test Steps** across 3 test modules.
+**Total Automated Coverage**: **57 Test Steps** across 3 test modules.
 
 ---
 
 ## 🔍 Detailed Test Breakdown Matrix
 
-### 1. `tests/local_test.ts` (26 Steps)
+### 1. `tests/local_test.ts` (27 Steps)
 - **Supabase Environment & SSE Event Protocol** (2 steps):
   - Validates Supabase environment credentials and configuration format.
   - Validates Server-Sent Events (SSE) stream headers and protocol formatting.
-- **Supabase Mock Schema & Ingest RPCs** (10 steps):
+- **Supabase Mock Schema & Ingest RPCs** (11 steps):
   - Registers dynamic UI layout definition RPC.
   - Asserts un-registered devices return null layout schema requiring empty state.
   - Asserts offline/detached devices retain stored layout schema for WebUI restoration.
@@ -32,6 +32,7 @@ This directory contains the automated integration and contract verification test
   - Staging test for `viewers_active` state transitions & WebSocket command dispatch.
   - Device joins while Web UI viewer is open ➔ returns `viewers_active=true` on initial boot ingest.
   - UI `viewers_active` command updates devices table state ➔ returns `viewers_active=true` on telemetry ingest (`DSN-2`).
+  - Enforces `SEC-1` (Zero Direct Table Writes) ➔ rejects direct REST table `POST`/`PATCH` attempts with `403 Forbidden` (`SEC-1`).
   - Releasing control lease updates status to `live` and clears `viewers_active`.
 - **Exclusive Control Lease & Storage Lifecycle** (5 steps):
   - Acquires and releases exclusive control lease.
